@@ -977,7 +977,7 @@ if(isIOS && !isInStandalone && !sessionStorage.getItem('iosHintDismissed')){
 // 常數
 // ════════════════════════════════
 const SUFFIXES     = ['N','N2','N3','N4','N5','N6'];
-const SHIP_DES_DEFAULT     = ['T3','T5','ITA10','C2','C3','C4','C5','C6','C8','C10','CT6','CT8','CT10','CT15','CT20','CT30','T10','T10SP','DP','DES試食','DESパンフ'];
+const SHIP_DES_DEFAULT     = ['T3','T5','C2','C3','C4','C5','C6','C8','C10','CT6','CT8','CT10','CT15','CT20','CT30','T10','T10SP','DP','DES試食','DESパンフ'];
 const SHIP_LF_DEFAULT      = ['LF2','LF3','LF4','LF5','LF6','LF8','LF9','LF10','LF12','LF15','LF20','LFT3','LFT5','LFT6','LFT8','LFP','LF試食','LFパンフ'];
 const SHIP_LE_DEFAULT      = ['LEGr-25g コーヒ','LEGr-50g','LERa-25g レーズン','LERa-50g','LEFi-25g イチジク','LEFi-50g','LEOr-25g オレンジ','LEOr-50g','LEM 80g','LERa-100g レーズン','LEFi-100g イチジク','LEM 115g','LEM-180g','LEM-250g'];
 const SHIP_YT_DEFAULT      = ['YT2','YT3','YT4','YT5','YT6','YT8','YT9','YT10','YT12','YT15','YT20','YT試食','YTパンフ'];
@@ -3333,12 +3333,15 @@ window.renderPriceGrid = function(){
   let rows = br.items.map((item, idx)=>{
     const p = priceMap[item]||{};
     const boxTotal = (p.qty||0)*(p.price||0);
+    const isDefault = (BRAND_DEFAULTS[br.id]||[]).includes(item);
+    const delBtn = `<td style="text-align:center"><button data-item="${idx}" data-brand="${br.id}" data-default="${isDefault?'1':'0'}" onclick="priceTabDeleteItem(this)" style="background:#FFF5F5;border:1px solid #FCA5A5;color:#E53E3E;border-radius:6px;padding:3px 8px;cursor:pointer;font-size:12px;line-height:1.4;">🗑</button></td>`;
     return `<tr>
       <td style="font-weight:600">${item}</td>
       <td style="text-align:right"><input class="price-input price-qty" data-idx="${idx}" type="number" min="0" inputmode="numeric" enterkeyhint="done" placeholder="個数" value="${p.qty||''}" oninput="updatePriceRow(this)" onkeydown="if(event.key==='Enter'){this.blur();}"></td>
       <td style="text-align:right"><input class="price-input price-ec-qty" data-idx="${idx}" type="number" min="0" inputmode="numeric" enterkeyhint="done" placeholder="EC個数" value="${p.ecQty||''}" oninput="updatePriceRow(this)" onkeydown="if(event.key==='Enter'){this.blur();}"></td>
       <td style="text-align:right"><input class="price-input price-pr" data-idx="${idx}" type="number" min="0" inputmode="numeric" enterkeyhint="done" placeholder="単価" value="${p.price||''}" oninput="updatePriceRow(this)" onkeydown="if(event.key==='Enter'){this.blur();}"></td>
       <td class="price-bt" data-idx="${idx}" style="text-align:right;font-weight:700;color:${boxTotal>0?'#0C447C':'#CBD5E1'}">${boxTotal>0?'¥'+boxTotal.toLocaleString():'—'}</td>
+      ${delBtn}
     </tr>`;
   }).join('');
 
@@ -3357,10 +3360,67 @@ window.renderPriceGrid = function(){
           <th style="text-align:right">EC個数</th>
           <th style="text-align:right">個数単価 (¥)</th>
           <th style="text-align:right">1箱合計金額</th>
+          <th style="text-align:center;width:60px;">操作</th>
         </tr></thead>
         <tbody>${rows}</tbody>
       </table>
+    </div>
+    <div style="margin-top:16px;padding:16px;background:#F8FAFC;border:1px solid var(--border-color);border-radius:10px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+      <span style="font-size:13px;font-weight:600;color:var(--text-secondary);">＋ 新品目を追加</span>
+      <input id="priceNewItemInput" type="text" placeholder="品目名を入力（例：T3）"
+        style="font-size:13px;padding:6px 12px;border:1px solid #CBD5E1;border-radius:6px;outline:none;flex:1;min-width:160px;"
+        onkeydown="if(event.key==='Enter')priceTabAddItem()"
+        onfocus="this.style.borderColor='#378ADD'" onblur="this.style.borderColor='#CBD5E1'">
+      <button onclick="priceTabAddItem()" class="btn primary" style="white-space:nowrap;">追加</button>
     </div>`;
+};
+
+// ── 單価 tab 品目新增 / 刪除 ──
+window.priceTabAddItem = async function(){
+  const inp = document.getElementById('priceNewItemInput');
+  const name = (inp.value||'').trim();
+  if(!name){ inp.focus(); return; }
+  const br = CP_BRANDS_CONFIG.find(b=>b.label===currentPriceBrand);
+  if(!br){ return; }
+  const arr = BRAND_ARRAYS[br.id];
+  if(arr.includes(name)){ window.toast('すでに存在する品目です'); inp.focus(); return; }
+  const defaults = BRAND_DEFAULTS[br.id];
+  const custom = arr.filter(i=>!defaults.includes(i));
+  custom.push(name);
+  arr.push(name);
+  br.items = arr;
+  inp.value = '';
+  renderPriceGrid();
+  window.toast('追加しました「'+name+'」');
+  try{ await saveCustomItems(br.id, custom); }
+  catch(e){ window.toast('同期失敗：'+e.message); }
+};
+
+window.priceTabDeleteItem = async function(btn){
+  const brandId = btn.dataset.brand;
+  const br = CP_BRANDS_CONFIG.find(b=>b.id===brandId);
+  if(!br) return;
+  const itemIdx = parseInt(btn.dataset.item);
+  const name = br.items[itemIdx];
+  if(!name) return;
+  const isDefault = btn.dataset.default === '1';
+  const msg = isDefault
+    ? '【固定品目】「'+name+'」を削除しますか？\n固定品目を削除すると、次回ページ更新時に復元されません。\n在庫・棚卸データは残ります。'
+    : '「'+name+'」を削除しますか？\nこの品目の在庫・棚卸データは残ります。';
+  if(!confirm(msg)) return;
+  const arr = BRAND_ARRAYS[brandId];
+  const defaults = BRAND_DEFAULTS[brandId];
+  // 固定品項也從 defaults 移除
+  const defaultIdx = defaults.indexOf(name);
+  if(defaultIdx>-1) defaults.splice(defaultIdx,1);
+  const custom = arr.filter(i=>!defaults.includes(i)&&i!==name);
+  const idx = arr.indexOf(name);
+  if(idx>-1) arr.splice(idx,1);
+  br.items = arr;
+  renderPriceGrid();
+  window.toast('削除しました「'+name+'」');
+  try{ await saveCustomItems(brandId, custom); }
+  catch(e){ window.toast('同期失敗：'+e.message); }
 };
 
 // 輸入時即時寫回 priceMap（用 data-idx 找品目名稱，完全避開 id 特殊字元問題）
