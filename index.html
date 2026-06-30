@@ -379,7 +379,6 @@ input[type="date"]:focus,input[type="text"]:focus{border-color:#378ADD;box-shado
       <button class="tab" data-tab="web" onclick="switchTab('web')">🌐 <span class="tab-label-full">WEB</span><span class="tab-label-short">WEB</span></button>
       <button class="tab" data-tab="kaitori" onclick="switchTab('kaitori')">🛍 <span class="tab-label-full">買取</span><span class="tab-label-short">買取</span></button>
       <button class="tab" data-tab="dash" onclick="switchTab('dash')">📊 <span class="tab-label-full">総量在庫</span><span class="tab-label-short">総量</span></button>
-      <button class="tab" data-tab="edit" onclick="switchTab('edit')">📝 <span class="tab-label-full">入庫/棚卸</span><span class="tab-label-short">入庫</span></button>
       <button class="tab" data-tab="dist" onclick="switchTab('dist')">🚚 <span class="tab-label-full">通路配分</span><span class="tab-label-short">配分</span></button>
       <button class="tab" data-tab="price" onclick="switchTab('price')">💰 <span class="tab-label-full">単価設定</span><span class="tab-label-short">単価</span></button>
     </div>
@@ -483,6 +482,7 @@ input[type="date"]:focus,input[type="text"]:focus{border-color:#378ADD;box-shado
           <button class="btn" id="ecToggleUnitBtn" onclick="toggleChannelUnit('ec')" style="font-weight:600;">🔢 個数表示</button>
         </div>
         <div class="summary-row" id="ecSummary"></div>
+        <div class="sub-tab-bar" id="dashECBrandTabs" style="margin-bottom:12px;"></div>
         <div class="brand-grid" id="ecGrid"></div>
       </div>
       <!-- WEB在庫 -->
@@ -1626,7 +1626,18 @@ window.renderDashboard=async function(){
             const boxQty=ch==='EC'?(p.ecQty||p.qty||1):(p.qty||1);
             const units=t.units||(t.boxes||0)*boxQty;
             if(t.from===ch){
-              if(ch==='EC'){
+              if(ch==='EC'&&t.to==='VT百貨'){
+                // EC→百貨: deptBoxes 優先で引き、残りを ecBoxes から
+                const deptQty=p.qty||1;
+                let remainUnits=units;
+                const useDept=Math.min(chDeptBoxes,Math.floor(remainUnits/deptQty));
+                chDeptBoxes-=useDept; remainUnits-=useDept*deptQty;
+                if(remainUnits>0){
+                  const totalUnits=chBoxes*boxQty+chLoose-remainUnits;
+                  if(totalUnits<=0){chBoxes=0;chLoose=0;}
+                  else{chBoxes=Math.floor(totalUnits/boxQty);chLoose=totalUnits%boxQty;}
+                }
+              } else if(ch==='EC'){
                 const totalUnits=chBoxes*boxQty+chLoose-units;
                 if(totalUnits<=0){chBoxes=0;chLoose=0;}
                 else{chBoxes=Math.floor(totalUnits/boxQty);chLoose=totalUnits%boxQty;}
@@ -1644,9 +1655,6 @@ window.renderDashboard=async function(){
             }
             if(t.from==='VT百貨'&&t.to==='EC'&&ch==='EC'){
               chDeptBoxes+=Math.floor(units/(p.qty||1));
-            }
-            if(t.from==='EC'&&t.to==='VT百貨'&&ch==='EC'){
-              chDeptBoxes=Math.max(0,chDeptBoxes-Math.floor(units/(p.qty||1)));
             }
           });
         });
@@ -4615,9 +4623,9 @@ window.renderChannelDash=async function(tabId, channelKey){
 };
 
 // ── EC在庫 ──
-window.renderECDash=async function(){ await renderECDashInto(document.getElementById('ecDateInput')?.value,'ecGrid','ecSummary','ec'); };
+window.renderECDash=async function(){ await renderECDashInto(document.getElementById('ecDateInput')?.value,'ecGrid','ecSummary','ec','dashECBrandTabs'); };
 
-async function renderECDashInto(d, gridId, summaryId, unitKey){
+async function renderECDashInto(d, gridId, summaryId, unitKey, brandTabsId){
   if(!d) return;
   const chStock=await getChannelStock('EC',d);
   const useChannelStock=Object.keys(chStock).length>0;
@@ -4627,7 +4635,7 @@ async function renderECDashInto(d, gridId, summaryId, unitKey){
   const showUnit=channelShowUnit[unitKey]||false;
   let totalBoxes=0, totalItems=0, totalValue=0;
   const grid=document.getElementById(gridId); grid.innerHTML='';
-  const tabsEl=document.getElementById('ecMainBrandTabs');
+  const tabsEl=brandTabsId?document.getElementById(brandTabsId):null;
   const ecBrandsConfig=CP_BRANDS_CONFIG.filter(b=>b.id!=='限定')
     .map(b=>({...b, items:b.items.filter(it=>!it.endsWith('パンフ')&&!it.endsWith('試食')&&!['ITA10','T10','T10SP'].includes(it))}));
   if(tabsEl){
@@ -4651,7 +4659,17 @@ async function renderECDashInto(d, gridId, summaryId, unitKey){
         (transferCache[date]||[]).forEach(t=>{
           if(t.item!==item) return;
           const units=t.units||(t.boxes||0)*ecBoxQty2;
-          if(t.from==='EC'){
+          if(t.from==='EC'&&t.to==='VT百貨'){
+            // EC→百貨: deptBoxes 優先で引き、残りを ecBoxes から
+            let remainUnits=units;
+            const useDept=Math.min(deptBoxes, Math.floor(remainUnits/deptBoxQty2));
+            deptBoxes-=useDept; remainUnits-=useDept*deptBoxQty2;
+            if(remainUnits>0){
+              const totalUnits=boxes*ecBoxQty2+loose-remainUnits;
+              if(totalUnits<=0){ boxes=0; loose=0; }
+              else { boxes=Math.floor(totalUnits/ecBoxQty2); loose=totalUnits%ecBoxQty2; }
+            }
+          } else if(t.from==='EC'){
             const totalUnits=boxes*ecBoxQty2+loose-units;
             if(totalUnits<=0){ boxes=0; loose=0; }
             else { boxes=Math.floor(totalUnits/ecBoxQty2); loose=totalUnits%ecBoxQty2; }
@@ -4661,7 +4679,6 @@ async function renderECDashInto(d, gridId, summaryId, unitKey){
             boxes=Math.floor(totalUnits/ecBoxQty2); loose=totalUnits%ecBoxQty2;
           }
           if(t.from==='VT百貨'&&t.to==='EC'){ deptBoxes+=Math.floor(units/deptBoxQty2); }
-          if(t.from==='EC'&&t.to==='VT百貨'){ deptBoxes=Math.max(0,deptBoxes-Math.floor(units/deptBoxQty2)); }
         });
       });
       const isEmpty=boxes===0&&loose===0&&deptBoxes===0;
@@ -5088,7 +5105,7 @@ window.switchDeptMainBrand=function(brandId){
 window.renderECDashMain=async function(){
   const d=document.getElementById('ecMainDateInput').value;
   if(!d) return;
-  await renderECDashInto(d,'ecMainGrid','ecMainSummary','ec');
+  await renderECDashInto(d,'ecMainGrid','ecMainSummary','ec','ecMainBrandTabs');
 };
 
 window.switchECMainBrand=function(brandId){
