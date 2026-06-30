@@ -513,6 +513,7 @@ input[type="date"]:focus,input[type="text"]:focus{border-color:#378ADD;box-shado
           <button class="btn" id="deptToggleUnitBtn" onclick="toggleChannelUnit('dept')" style="font-weight:600;">🔢 個数表示</button>
         </div>
         <div class="summary-row" id="deptSummary"></div>
+        <div class="sub-tab-bar" id="dashDeptBrandTabs" style="margin-bottom:12px;"></div>
         <div class="brand-grid" id="deptGrid"></div>
       </div>
     </div>
@@ -4692,9 +4693,9 @@ async function renderECDashInto(d, gridId, summaryId, unitKey){
 };
 
 // ── 百貨在庫（通路棚卸優先、なければ総量−EC−WEB−買取）──
-window.renderDeptDash=async function(){ await renderDeptDashInto(document.getElementById('deptDateInput')?.value,'deptGrid','deptSummary','dept'); };
+window.renderDeptDash=async function(){ await renderDeptDashInto(document.getElementById('deptDateInput')?.value,'deptGrid','deptSummary','dept','dashDeptBrandTabs'); };
 
-async function renderDeptDashInto(d, gridId, summaryId, unitKey){
+async function renderDeptDashInto(d, gridId, summaryId, unitKey, brandTabsId){
   if(!d) return;
   const chStock=await getChannelStock('VT百貨',d);
   const useChannelStock=Object.keys(chStock).length>0;
@@ -4703,7 +4704,7 @@ async function renderDeptDashInto(d, gridId, summaryId, unitKey){
   try{ const snap=await get(ref(db,'transferHistory')); transferCache=snap.val()||{}; }catch(e){}
   let totalBoxes=0, totalItems=0, totalValue=0;
   const grid=document.getElementById(gridId); grid.innerHTML='';
-  const tabsEl=document.getElementById('deptMainBrandTabs');
+  const tabsEl=brandTabsId?document.getElementById(brandTabsId):null;
   if(tabsEl){
     tabsEl.innerHTML=`<button class="sub-tab${deptMainBrand==='ALL'?' active':''}" onclick="switchDeptMainBrand('ALL')">全部</button>`+
       CP_BRANDS_CONFIG.map(b=>`<button class="sub-tab${b.id===deptMainBrand?' active':''}" onclick="switchDeptMainBrand('${b.id}')">${b.label}</button>`).join('');
@@ -5076,7 +5077,7 @@ window.toggleECMainUnit=function(){
 window.renderDeptDashMain=async function(){
   const d=document.getElementById('deptMainDateInput').value;
   if(!d) return;
-  await renderDeptDashInto(d,'deptMainGrid','deptMainSummary','dept');
+  await renderDeptDashInto(d,'deptMainGrid','deptMainSummary','dept','deptMainBrandTabs');
 };
 
 window.switchDeptMainBrand=function(brandId){
