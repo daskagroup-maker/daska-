@@ -3704,7 +3704,7 @@ window.renderAnalytics=async function(){
       });
     }
     const deptTotalBoxes=deptOwnBoxes;
-    const deptVal=deptTotalBoxes*deptBoxQty*price;
+    const deptVal=deptTotalBoxes*deptBoxQty*price+deptLoose*price;
     channelData['VT百貨'].boxes+=deptTotalBoxes; channelData['VT百貨'].value+=deptVal;
     brandData[br.label].boxes+=deptTotalBoxes; brandData[br.label].value+=deptVal;
     brandData[br.label].ch['VT百貨'].boxes+=deptTotalBoxes; brandData[br.label].ch['VT百貨'].value+=deptVal;
@@ -3720,7 +3720,8 @@ window.renderAnalytics=async function(){
     ['WEB','買取'].forEach(ch=>{
       const chItem=chStocks[ch][item]||null;
       const boxes=(chItem&&(chItem.boxes||0)>0)?(chItem.boxes||0):(distMap[item]?.[ch]?.boxes||0);
-      const val=boxes*deptBoxQty*price;
+      const loose=(chItem&&(chItem.boxes||0)>0)?(chItem.loose||0):0;
+      const val=boxes*deptBoxQty*price+loose*price;
       channelData[ch].boxes+=boxes; channelData[ch].value+=val;
       brandData[br.label].boxes+=boxes; brandData[br.label].value+=val;
       brandData[br.label].ch[ch].boxes+=boxes; brandData[br.label].ch[ch].value+=val;
@@ -3954,7 +3955,7 @@ window.renderGuestAnalytics=async function(){
       });
     }
     const deptTotalBoxes=deptOwnBoxes;
-    const deptVal=deptTotalBoxes*deptBoxQty*price;
+    const deptVal=deptTotalBoxes*deptBoxQty*price+deptLoose*price;
     channelData['VT百貨'].boxes+=deptTotalBoxes; channelData['VT百貨'].value+=deptVal;
     brandData[br.label].boxes+=deptTotalBoxes; brandData[br.label].value+=deptVal;
     brandData[br.label].ch['VT百貨'].boxes+=deptTotalBoxes; brandData[br.label].ch['VT百貨'].value+=deptVal;
@@ -3970,7 +3971,8 @@ window.renderGuestAnalytics=async function(){
     ['WEB','買取'].forEach(ch=>{
       const chItem=chStocks[ch][item]||null;
       const boxes=(chItem&&(chItem.boxes||0)>0)?(chItem.boxes||0):(distMap[item]?.[ch]?.boxes||0);
-      const val=boxes*deptBoxQty*price;
+      const loose=(chItem&&(chItem.boxes||0)>0)?(chItem.loose||0):0;
+      const val=boxes*deptBoxQty*price+loose*price;
       channelData[ch].boxes+=boxes; channelData[ch].value+=val;
       brandData[br.label].boxes+=boxes; brandData[br.label].value+=val;
       brandData[br.label].ch[ch].boxes+=boxes; brandData[br.label].ch[ch].value+=val;
