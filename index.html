@@ -2904,7 +2904,7 @@ window.renderGuestChannelDash=async function(tabId, channelKey){
       const deptBoxQty=p.qty||0;
       const val=channelKey==='EC'
         ?boxes*ecBoxQty*(p.price||0)+deptBoxes*deptBoxQty*(p.price||0)+(loose*(p.price||0))
-        :boxes*(p.qty||0)*(p.price||0);
+        :boxes*(p.qty||0)*(p.price||0)+(loose*(p.price||0));
       brVal+=val;totalValue+=val;
       let display;
       if(channelKey==='EC'){
@@ -4823,7 +4823,7 @@ async function renderDeptDashInto(d, gridId, summaryId, unitKey, brandTabsId){
         });
         const isEmpty=boxes===0&&loose===0;
         if(!isEmpty){ totalItems++; totalBoxes+=boxes; }
-        const val=boxes*(p.qty||0)*(p.price||0);
+        const val=boxes*(p.qty||0)*(p.price||0)+(loose*(p.price||0));
         brVal+=val; totalValue+=val;
         let display;
         if(showUnit && p.qty>0) display=`${boxes*p.qty+(loose||0)} 個`;
@@ -4866,7 +4866,7 @@ async function renderDeptDashInto(d, gridId, summaryId, unitKey, brandTabsId){
         });
         const isEmpty=boxes===0&&loose===0;
         if(!isEmpty){ totalItems++; totalBoxes+=boxes; }
-        const val=boxes*(p.qty||0)*(p.price||0);
+        const val=boxes*(p.qty||0)*(p.price||0)+(loose*(p.price||0));
         brVal+=val; totalValue+=val;
         let display;
         if(showUnit && p.qty>0) display=`${boxes*p.qty+(loose||0)} 個`;
@@ -5221,7 +5221,7 @@ async function renderSimpleChannelDashInto(channel, label, d, gridId, summaryId,
       });
       const isEmpty=boxes===0&&loose===0;
       if(!isEmpty){ totalItems++; totalBoxes+=boxes; }
-      const val=boxes*(p.qty||0)*(p.price||0);
+      const val=boxes*(p.qty||0)*(p.price||0)+(loose*(p.price||0));
       brVal+=val; totalValue+=val;
       let display;
       if(showUnit && p.qty>0) display=`${boxes*p.qty+(loose||0)} 個`;
