@@ -1162,6 +1162,7 @@ async function loadChannelStock(d){
         channelStockForm[item]=val.boxes||0;
         if(val.loose) channelStockForm[item+'_loose']=val.loose;
         if(val.deptBoxes) channelStockForm[item+'_deptBoxes']=val.deptBoxes;
+        if(val.deptLoose) channelStockForm[item+'_deptLoose']=val.deptLoose;
       } else {
         channelStockForm[item]=val;
       }
@@ -1216,6 +1217,16 @@ function renderChannelStockGrid(){
               onkeydown="if(event.key==='Enter'){this.blur();}">
             <button onclick="chStep('${item}','deptBoxes',1)">+</button>
           </div>
+        </div>
+        <div style="padding:0 14px 8px;display:flex;align-items:center;gap:6px;">
+          <span style="font-size:12px;color:#92400E;white-space:nowrap;">＋百貨尾数</span>
+          <input type="number" class="note-input" placeholder="個数" min="0" inputmode="numeric" enterkeyhint="done"
+            value="${channelStockForm[item+'_deptLoose']||''}"
+            oninput="chSet('${item}','deptLoose',this.value)"
+            onkeydown="if(event.key==='Enter'){this.blur();}"
+            style="width:80px;font-size:12px;padding:4px 8px;border:1px dashed #F0C36D;border-radius:6px;outline:none;color:#92400E;background:#FFFBF0;text-align:right;"
+            onfocus="this.style.borderColor='#DD9F1E'" onblur="this.style.borderColor='#F0C36D'">
+          <span style="font-size:12px;color:#92400E;">個</span>
         </div>`:''}
         <div style="padding:0 14px 8px;display:flex;align-items:center;gap:6px;">
           <span style="font-size:12px;color:var(--text-secondary);white-space:nowrap;">＋バラ</span>
@@ -1234,12 +1245,12 @@ function renderChannelStockGrid(){
 
 window.switchChannelBrand=function(id){ channelStockBrand=id; renderChannelStockGrid(); };
 window.chStep=function(item,field,d){
-  const key=field==='loose'?item+'_loose':field==='deptBoxes'?item+'_deptBoxes':item;
+  const key=field==='loose'?item+'_loose':field==='deptBoxes'?item+'_deptBoxes':field==='deptLoose'?item+'_deptLoose':item;
   channelStockForm[key]=Math.max(0,(Number(channelStockForm[key])||0)+d);
   renderChannelStockGrid();
 };
 window.chSet=function(item,field,v){
-  const key=field==='loose'?item+'_loose':field==='deptBoxes'?item+'_deptBoxes':item;
+  const key=field==='loose'?item+'_loose':field==='deptBoxes'?item+'_deptBoxes':field==='deptLoose'?item+'_deptLoose':item;
   channelStockForm[key]=v;
 };
 
@@ -1251,10 +1262,12 @@ window.saveChannelStock=async function(){
     const boxes=Number(channelStockForm[item])||0;
     const loose=Number(channelStockForm[item+'_loose'])||0;
     const deptBoxes=Number(channelStockForm[item+'_deptBoxes'])||0;
-    if(boxes>0||loose>0||deptBoxes>0){
+    const deptLoose=Number(channelStockForm[item+'_deptLoose'])||0;
+    if(boxes>0||loose>0||deptBoxes>0||deptLoose>0){
       obj[item]={boxes};
       if(loose>0) obj[item].loose=loose;
       if(deptBoxes>0&&currentChannelTab==='EC') obj[item].deptBoxes=deptBoxes;
+      if(deptLoose>0&&currentChannelTab==='EC') obj[item].deptLoose=deptLoose;
     }
   }));
   showSyncOverlay('保存中...');
@@ -1299,7 +1312,7 @@ async function getChannelStock(channel, d){
     // normalize: {item: number} or {item: {boxes, loose}}
     const result={};
     Object.entries(raw).forEach(([item,val])=>{
-      if(typeof val==='object') result[item]={boxes:val.boxes||0, loose:val.loose||0, deptBoxes:val.deptBoxes||0};
+      if(typeof val==='object') result[item]={boxes:val.boxes||0, loose:val.loose||0, deptBoxes:val.deptBoxes||0, deptLoose:val.deptLoose||0};
       else result[item]={boxes:Number(val)||0, loose:0, deptBoxes:0};
     });
     return result;
@@ -1608,30 +1621,34 @@ window.renderDashboard=async function(){
     }));
 
     CP_BRANDS_CONFIG.forEach(br=>br.items.forEach(item=>{
-      let deptB=0,ecB=0,ecDeptB=0,otherB=0,ecLoose=0;
+      let deptB=0,ecB=0,ecDeptB=0,ecDeptLooseB=0,otherB=0,ecLoose=0;
       const p=priceMap[item]||{};
 
       channels.forEach(ch=>{
         const chItem=chStocks[ch][item]||null;
-        const hasStock=chItem&&((chItem.boxes||0)>0||(chItem.loose||0)>0||(chItem.deptBoxes||0)>0);
+        const hasStock=chItem&&((chItem.boxes||0)>0||(chItem.loose||0)>0||(chItem.deptBoxes||0)>0||(chItem.deptLoose||0)>0);
         let chBoxes=hasStock?(chItem.boxes||0):0;
         let chLoose=hasStock&&ch==='EC'?(chItem.loose||0):0;
         let chDeptBoxes=hasStock&&ch==='EC'?(chItem.deptBoxes||0):0;
+        let chDeptLoose=hasStock&&ch==='EC'?(chItem.deptLoose||0):0;
 
         // 棚卸日以降の調貨を適用
         const stDate=stocktakeDates[ch]||'0000-00-00';
         Object.keys(transferCache).filter(date=>date>=stDate&&date<=d).sort().forEach(date=>{
           (transferCache[date]||[]).forEach(t=>{
             if(t.item!==item) return;
+            const deptQty=p.qty||1;
             const boxQty=ch==='EC'?(p.ecQty||p.qty||1):(p.qty||1);
-            const units=t.units||(t.boxes||0)*boxQty;
+            const units=t.units||(t.boxes||0)*(t.from==='EC'?(p.ecQty||p.qty||1):deptQty);
             if(t.from===ch){
               if(ch==='EC'&&t.to==='VT百貨'){
-                // EC→百貨: deptBoxes 優先で引き、残りを ecBoxes から
-                const deptQty=p.qty||1;
+                // EC→百貨: 百貨分（deptBoxes+deptLoose）を個数ベースで優先消費、残りをEC自社箱/バラから
                 let remainUnits=units;
-                const useDept=Math.min(chDeptBoxes,Math.floor(remainUnits/deptQty));
-                chDeptBoxes-=useDept; remainUnits-=useDept*deptQty;
+                const deptPoolUnits=chDeptBoxes*deptQty+chDeptLoose;
+                const useFromDept=Math.min(deptPoolUnits, remainUnits);
+                const newDeptPoolUnits=deptPoolUnits-useFromDept;
+                chDeptBoxes=Math.floor(newDeptPoolUnits/deptQty); chDeptLoose=newDeptPoolUnits%deptQty;
+                remainUnits-=useFromDept;
                 if(remainUnits>0){
                   const totalUnits=chBoxes*boxQty+chLoose-remainUnits;
                   if(totalUnits<=0){chBoxes=0;chLoose=0;}
@@ -1654,20 +1671,22 @@ window.renderDashboard=async function(){
               }
             }
             if(t.from==='VT百貨'&&t.to==='EC'&&ch==='EC'){
-              chDeptBoxes+=Math.floor(units/(p.qty||1));
+              // 百貨→EC：個数のまま百貨分（deptBoxes+deptLoose）に加算、尾数を切り捨てない
+              const poolUnits=chDeptBoxes*deptQty+chDeptLoose+units;
+              chDeptBoxes=Math.floor(poolUnits/deptQty); chDeptLoose=poolUnits%deptQty;
             }
           });
         });
 
         if(ch==='VT百貨'){ deptB+=chBoxes; }
-        else if(ch==='EC'){ ecB+=chBoxes; ecDeptB+=chDeptBoxes; ecLoose+=chLoose; }
+        else if(ch==='EC'){ ecB+=chBoxes; ecDeptB+=chDeptBoxes; ecDeptLooseB+=chDeptLoose; ecLoose+=chLoose; }
         else { otherB+=chBoxes; }
       });
 
       const totalBoxes=deptB+ecB+ecDeptB+otherB;
-      if(totalBoxes>0||ecLoose>0){
+      if(totalBoxes>0||ecLoose>0||ecDeptLooseB>0){
         stockMap[item]={boxes:totalBoxes,loose:ecLoose};
-        channelBoxesMap[item]={dept:deptB,ec:ecB,ecDept:ecDeptB,other:otherB,ecLoose};
+        channelBoxesMap[item]={dept:deptB,ec:ecB,ecDept:ecDeptB,ecDeptLoose:ecDeptLooseB,other:otherB,ecLoose};
       }
     }));
   } else {
@@ -1720,7 +1739,7 @@ window.renderDashboard=async function(){
     if(hasAnyChannelStock && Object.keys(ch).length>0){
       const ecBoxQty=p.ecQty||p.qty||0;
       const deptBoxQty=p.qty||0;
-      totalValue += ch.dept*deptBoxQty*p.price + ch.ec*ecBoxQty*p.price + ch.ecDept*deptBoxQty*p.price + ch.other*deptBoxQty*p.price + (v.loose||0)*p.price;
+      totalValue += ch.dept*deptBoxQty*p.price + ch.ec*ecBoxQty*p.price + ch.ecDept*deptBoxQty*p.price + (ch.ecDeptLoose||0)*p.price + ch.other*deptBoxQty*p.price + (v.loose||0)*p.price;
     } else if(p.qty>0){
       const totalUnits = v.boxes*p.qty + (v.loose||0);
       totalValue += totalUnits*p.price;
@@ -1742,7 +1761,7 @@ window.renderDashboard=async function(){
       if(hasAnyChannelStock && Object.keys(ch).length>0){
         const ecBoxQty=p.ecQty||p.qty||0;
         const deptBoxQty=p.qty||0;
-        brVal += ch.dept*deptBoxQty*p.price + ch.ec*ecBoxQty*p.price + ch.ecDept*deptBoxQty*p.price + ch.other*deptBoxQty*p.price + (v.loose||0)*p.price;
+        brVal += ch.dept*deptBoxQty*p.price + ch.ec*ecBoxQty*p.price + ch.ecDept*deptBoxQty*p.price + (ch.ecDeptLoose||0)*p.price + ch.other*deptBoxQty*p.price + (v.loose||0)*p.price;
       } else if(p.qty>0){
         const totalUnits = v.boxes*p.qty + (v.loose||0);
         brVal += totalUnits*p.price;
@@ -1813,12 +1832,13 @@ function renderDashBrandGrid(){
         const deptBoxes = chBoxes.dept||0;
         const ecBoxes = chBoxes.ec||0;
         const ecDeptBoxes = chBoxes.ecDept||0;
+        const ecDeptLoose = chBoxes.ecDeptLoose||0;
         const otherBoxes = chBoxes.other||0;
         const loose = v.loose||0;
         const ecBoxQty = p.ecQty||p.qty||0;
         const deptBoxQty = p.qty||0;
         if(deptBoxQty>0||ecBoxQty>0){
-          const totalUnits = deptBoxes*deptBoxQty + ecBoxes*ecBoxQty + ecDeptBoxes*deptBoxQty + otherBoxes*deptBoxQty + loose;
+          const totalUnits = deptBoxes*deptBoxQty + ecBoxes*ecBoxQty + ecDeptBoxes*deptBoxQty + ecDeptLoose + otherBoxes*deptBoxQty + loose;
           display = `${totalUnits} 個`;
         } else {
           display = `${v.boxes} 箱`;
@@ -1826,7 +1846,7 @@ function renderDashBrandGrid(){
       } else {
         display = v.boxes>0 ? `${v.boxes} 箱${v.loose>0?` +${v.loose}個`:''}` : (v.loose>0?`0 箱 +${v.loose}個`:`0 箱`);
       }
-      const isEmpty = v.boxes===0 && v.loose===0;
+      const isEmpty = v.boxes===0 && v.loose===0 && ((_lastChannelBoxes?.[item]?.ecDeptLoose||0)===0);
       return `<div class="brand-row"><span class="rname">${item}</span><div class="stock-val ${isEmpty?'zero':''}">${display}</div></div>`;
     }).join('');
     const footer=_lastHasPrice&&brVal>0?`<div class="brand-value-footer"><span class="brand-value-label">💰 ${br.label} 金額</span><span class="brand-value-amount">¥${brVal.toLocaleString()}</span></div>`:'';
@@ -2671,33 +2691,45 @@ window.renderGuestDashboard=async function(){
     const stocktakeDates={};
     await Promise.all(channels.map(async ch=>{ stocktakeDates[ch]=await getChannelStockDate(ch,d); }));
     CP_BRANDS_CONFIG.forEach(br=>br.items.forEach(item=>{
-      let deptB=0,ecB=0,ecDeptB=0,otherB=0;
+      let deptB=0,ecB=0,ecDeptB=0,ecDeptLooseB=0,otherB=0;
       const p=priceMap[item]||{};
       channels.forEach(ch=>{
         const chItem=chStocks[ch][item]||null;
-        const hasStock=chItem&&((chItem.boxes||0)>0||(chItem.loose||0)>0||(chItem.deptBoxes||0)>0);
+        const hasStock=chItem&&((chItem.boxes||0)>0||(chItem.loose||0)>0||(chItem.deptBoxes||0)>0||(chItem.deptLoose||0)>0);
         let chBoxes=hasStock?(chItem.boxes||0):0;
         let chDeptBoxes=hasStock&&ch==='EC'?(chItem.deptBoxes||0):0;
+        let chDeptLoose=hasStock&&ch==='EC'?(chItem.deptLoose||0):0;
         const stDate=stocktakeDates[ch]||'0000-00-00';
         Object.keys(transferCache).filter(date=>date>=stDate&&date<=d).sort().forEach(date=>{
           (transferCache[date]||[]).forEach(t=>{
             if(t.item!==item) return;
+            const deptQty=p.qty||1;
             const boxQty=ch==='EC'?(p.ecQty||p.qty||1):(p.qty||1);
-            const units=t.units||(t.boxes||0)*boxQty;
-            if(t.from===ch) chBoxes=Math.max(0,chBoxes-Math.floor(units/boxQty));
+            const units=t.units||(t.boxes||0)*(t.from==='EC'?(p.ecQty||p.qty||1):deptQty);
+            if(t.from===ch && !(ch==='EC'&&t.to==='VT百貨')) chBoxes=Math.max(0,chBoxes-Math.floor(units/boxQty));
             if(t.to===ch&&!(t.from==='VT百貨'&&ch==='EC')) chBoxes+=Math.floor(units/boxQty);
-            if(t.from==='VT百貨'&&t.to==='EC'&&ch==='EC') chDeptBoxes+=Math.floor(units/(p.qty||1));
-            if(t.from==='EC'&&t.to==='VT百貨'&&ch==='EC') chDeptBoxes=Math.max(0,chDeptBoxes-Math.floor(units/(p.qty||1)));
+            if(t.from==='VT百貨'&&t.to==='EC'&&ch==='EC'){
+              const poolUnits=chDeptBoxes*deptQty+chDeptLoose+units;
+              chDeptBoxes=Math.floor(poolUnits/deptQty); chDeptLoose=poolUnits%deptQty;
+            }
+            if(t.from==='EC'&&t.to==='VT百貨'&&ch==='EC'){
+              const deptPoolUnits=chDeptBoxes*deptQty+chDeptLoose;
+              const useFromDept=Math.min(deptPoolUnits, units);
+              const newDeptPoolUnits=deptPoolUnits-useFromDept;
+              chDeptBoxes=Math.floor(newDeptPoolUnits/deptQty); chDeptLoose=newDeptPoolUnits%deptQty;
+              const remainUnits=units-useFromDept;
+              if(remainUnits>0) chBoxes=Math.max(0,chBoxes-Math.ceil(remainUnits/boxQty));
+            }
           });
         });
         if(ch==='VT百貨') deptB+=chBoxes;
-        else if(ch==='EC'){ ecB+=chBoxes; ecDeptB+=chDeptBoxes; }
+        else if(ch==='EC'){ ecB+=chBoxes; ecDeptB+=chDeptBoxes; ecDeptLooseB+=chDeptLoose; }
         else otherB+=chBoxes;
       });
       const totalBoxes=deptB+ecB+ecDeptB+otherB;
-      if(totalBoxes>0){
+      if(totalBoxes>0||ecDeptLooseB>0){
         stockMap[item]={boxes:totalBoxes,loose:0};
-        guestChannelBoxesMap[item]={dept:deptB,ec:ecB,ecDept:ecDeptB,other:otherB};
+        guestChannelBoxesMap[item]={dept:deptB,ec:ecB,ecDept:ecDeptB,ecDeptLoose:ecDeptLooseB,other:otherB};
       }
     }));
   } else {
@@ -2740,7 +2772,7 @@ window.renderGuestDashboard=async function(){
       if(hasAnyChannelStock && Object.keys(ch).length>0){
         const ecBoxQty=p.ecQty||p.qty||0;
         const deptBoxQty=p.qty||0;
-        brVal += ch.dept*deptBoxQty*p.price + ch.ec*ecBoxQty*p.price + ch.ecDept*deptBoxQty*p.price + ch.other*deptBoxQty*p.price + (v.loose||0)*p.price;
+        brVal += ch.dept*deptBoxQty*p.price + ch.ec*ecBoxQty*p.price + ch.ecDept*deptBoxQty*p.price + (ch.ecDeptLoose||0)*p.price + ch.other*deptBoxQty*p.price + (v.loose||0)*p.price;
       } else if(p.qty>0){
         brVal += (v.boxes*p.qty+(v.loose||0))*p.price;
       }
@@ -2769,7 +2801,7 @@ window.renderGuestDashboard=async function(){
         const ecBoxQty=p.ecQty||p.qty||0;
         const deptBoxQty=p.qty||0;
         if(hasAnyChannelStock && Object.keys(ch).length>0){
-          const totalUnits=ch.dept*deptBoxQty+ch.ec*ecBoxQty+ch.ecDept*deptBoxQty+ch.other*deptBoxQty+(v.loose||0);
+          const totalUnits=ch.dept*deptBoxQty+ch.ec*ecBoxQty+ch.ecDept*deptBoxQty+(ch.ecDeptLoose||0)+ch.other*deptBoxQty+(v.loose||0);
           display=`${totalUnits} 個`;
         } else if(deptBoxQty>0){
           display=`${v.boxes*deptBoxQty+(v.loose||0)} 個`;
@@ -2886,33 +2918,35 @@ window.renderGuestChannelDash=async function(tabId, channelKey){
     const card=document.createElement('div'); card.className='brand-card';
     let brVal=0;
     const rows=br.items.map(item=>{
-      let boxes,loose,deptBoxes=0;
+      let boxes,loose,deptBoxes=0,deptLoose=0;
       if(useChannelStock){
         const chItem=chStock[item]||{boxes:0,loose:0,deptBoxes:0};
         boxes=chItem.boxes; loose=chItem.loose||0;
         deptBoxes=channelKey==='EC'?(chItem.deptBoxes||0):0;
+        deptLoose=channelKey==='EC'?(chItem.deptLoose||0):0;
       } else {
         const key=tabId==='dept'?'VT百貨':channelKey;
         boxes=distMap[item]?.[key]?.boxes||0;
         loose=distMap[item]?.[key]?.loose||0;
         deptBoxes=channelKey==='EC'?(distMap[item]?.EC?.deptBoxes||0):0;
+        deptLoose=channelKey==='EC'?(distMap[item]?.EC?.deptLoose||0):0;
       }
-      const isEmpty=boxes===0&&loose===0&&deptBoxes===0;
+      const isEmpty=boxes===0&&loose===0&&deptBoxes===0&&deptLoose===0;
       if(!isEmpty){totalItems++;totalBoxes+=boxes+deptBoxes;}
       const p=priceMap[item]||{};
       const ecBoxQty=p.ecQty||p.qty||0;
       const deptBoxQty=p.qty||0;
       const val=channelKey==='EC'
-        ?boxes*ecBoxQty*(p.price||0)+deptBoxes*deptBoxQty*(p.price||0)+(loose*(p.price||0))
+        ?boxes*ecBoxQty*(p.price||0)+deptBoxes*deptBoxQty*(p.price||0)+(loose*(p.price||0))+(deptLoose*(p.price||0))
         :boxes*(p.qty||0)*(p.price||0)+(loose*(p.price||0));
       brVal+=val;totalValue+=val;
       let display;
       if(channelKey==='EC'){
         if(showUnit&&(ecBoxQty||deptBoxQty)>0){
-          display=`${boxes*ecBoxQty+(loose||0)+deptBoxes*deptBoxQty} 個`;
+          display=`${boxes*ecBoxQty+(loose||0)+deptBoxes*deptBoxQty+deptLoose} 個`;
         } else {
           const ecPart=boxes>0||loose>0?`EC:${boxes}箱${loose>0?` +${loose}個`:''}`:null;
-          const dPart=deptBoxes>0?`百貨:${deptBoxes}箱`:null;
+          const dPart=deptBoxes>0||deptLoose>0?`百貨:${deptBoxes}箱${deptLoose>0?` +${deptLoose}個`:''}`:null;
           display=[ecPart,dPart].filter(Boolean).join(' + ')||`0 箱`;
         }
       } else {
@@ -3654,29 +3688,44 @@ window.renderAnalytics=async function(){
     const deptBoxQty=p.qty||1;
     const price=p.price||0;
 
-    // EC通路の生データ（自社EC箱数・バラ・EC倉に紐づく百貨分の箱数）
+    // EC通路の生データ（自社EC箱数・バラ・EC倉に紐づく百貨分の箱数・尾数）
     const ecItem=chStocks['EC'][item]||null;
-    const ecHasStock=ecItem&&((ecItem.boxes||0)>0||(ecItem.deptBoxes||0)>0||(ecItem.loose||0)>0);
-    let ecOwnBoxes,ecLoose,ecDeptBoxes;
+    const ecHasStock=ecItem&&((ecItem.boxes||0)>0||(ecItem.deptBoxes||0)>0||(ecItem.loose||0)>0||(ecItem.deptLoose||0)>0);
+    let ecOwnBoxes,ecLoose,ecDeptBoxes,ecDeptLoose;
     if(ecHasStock){
-      ecOwnBoxes=ecItem.boxes||0; ecLoose=ecItem.loose||0; ecDeptBoxes=ecItem.deptBoxes||0;
+      ecOwnBoxes=ecItem.boxes||0; ecLoose=ecItem.loose||0; ecDeptBoxes=ecItem.deptBoxes||0; ecDeptLoose=ecItem.deptLoose||0;
     } else {
       ecOwnBoxes=distMap[item]?.EC?.boxes||0; ecLoose=0;
-      ecDeptBoxes=distMap[item]?.EC?.deptBoxes||0;
+      ecDeptBoxes=distMap[item]?.EC?.deptBoxes||0; ecDeptLoose=distMap[item]?.EC?.deptLoose||0;
     }
     // 棚卸日以降の調貨を適用（EC）
     if(ecHasStockGlobal){
       Object.keys(transferCache).filter(date=>date>=ecStocktakeDate&&date<=d).sort().forEach(date=>{
         (transferCache[date]||[]).forEach(t=>{
           if(t.item!==item) return;
-          const units=t.units||(t.boxes||0)*ecBoxQty;
-          if(t.from==='EC'){
+          const units=t.units||(t.boxes||0)*(t.from==='EC'?ecBoxQty:deptBoxQty);
+          if(t.from==='EC'&&t.to==='VT百貨'){
+            let remainUnits=units;
+            const deptPoolUnits=ecDeptBoxes*deptBoxQty+ecDeptLoose;
+            const useFromDept=Math.min(deptPoolUnits, remainUnits);
+            const newDeptPoolUnits=deptPoolUnits-useFromDept;
+            ecDeptBoxes=Math.floor(newDeptPoolUnits/deptBoxQty); ecDeptLoose=newDeptPoolUnits%deptBoxQty;
+            remainUnits-=useFromDept;
+            if(remainUnits>0){
+              const total=ecOwnBoxes*ecBoxQty+ecLoose-remainUnits;
+              if(total<=0){ecOwnBoxes=0;ecLoose=0;} else {ecOwnBoxes=Math.floor(total/ecBoxQty);ecLoose=total%ecBoxQty;}
+            }
+          } else if(t.from==='EC'){
             const total=ecOwnBoxes*ecBoxQty+ecLoose-units;
             if(total<=0){ecOwnBoxes=0;ecLoose=0;} else {ecOwnBoxes=Math.floor(total/ecBoxQty);ecLoose=total%ecBoxQty;}
           }
           if(t.to==='EC'&&t.from!=='VT百貨'){
             const total=ecOwnBoxes*ecBoxQty+ecLoose+units;
             ecOwnBoxes=Math.floor(total/ecBoxQty);ecLoose=total%ecBoxQty;
+          }
+          if(t.from==='VT百貨'&&t.to==='EC'){
+            const poolUnits=ecDeptBoxes*deptBoxQty+ecDeptLoose+units;
+            ecDeptBoxes=Math.floor(poolUnits/deptBoxQty); ecDeptLoose=poolUnits%deptBoxQty;
           }
         });
       });
@@ -3711,7 +3760,7 @@ window.renderAnalytics=async function(){
 
     // EC通路（自社EC在庫＋EC倉に紐づく百貨分の箱も含む）
     const ecTotalBoxes=ecOwnBoxes+ecDeptBoxes;
-    const ecVal=ecOwnBoxes*ecBoxQty*price+ecLoose*price+ecDeptBoxes*deptBoxQty*price;
+    const ecVal=ecOwnBoxes*ecBoxQty*price+ecLoose*price+ecDeptBoxes*deptBoxQty*price+ecDeptLoose*price;
     channelData['EC'].boxes+=ecTotalBoxes; channelData['EC'].value+=ecVal;
     brandData[br.label].boxes+=ecTotalBoxes; brandData[br.label].value+=ecVal;
     brandData[br.label].ch['EC'].boxes+=ecTotalBoxes; brandData[br.label].ch['EC'].value+=ecVal;
@@ -3905,29 +3954,44 @@ window.renderGuestAnalytics=async function(){
     const deptBoxQty=p.qty||1;
     const price=p.price||0;
 
-    // EC通路の生データ（自社EC箱数・バラ・EC倉に紐づく百貨分の箱数）
+    // EC通路の生データ（自社EC箱数・バラ・EC倉に紐づく百貨分の箱数・尾数）
     const ecItem=chStocks['EC'][item]||null;
-    const ecHasStock=ecItem&&((ecItem.boxes||0)>0||(ecItem.deptBoxes||0)>0||(ecItem.loose||0)>0);
-    let ecOwnBoxes,ecLoose,ecDeptBoxes;
+    const ecHasStock=ecItem&&((ecItem.boxes||0)>0||(ecItem.deptBoxes||0)>0||(ecItem.loose||0)>0||(ecItem.deptLoose||0)>0);
+    let ecOwnBoxes,ecLoose,ecDeptBoxes,ecDeptLoose;
     if(ecHasStock){
-      ecOwnBoxes=ecItem.boxes||0; ecLoose=ecItem.loose||0; ecDeptBoxes=ecItem.deptBoxes||0;
+      ecOwnBoxes=ecItem.boxes||0; ecLoose=ecItem.loose||0; ecDeptBoxes=ecItem.deptBoxes||0; ecDeptLoose=ecItem.deptLoose||0;
     } else {
       ecOwnBoxes=distMap[item]?.EC?.boxes||0; ecLoose=0;
-      ecDeptBoxes=distMap[item]?.EC?.deptBoxes||0;
+      ecDeptBoxes=distMap[item]?.EC?.deptBoxes||0; ecDeptLoose=distMap[item]?.EC?.deptLoose||0;
     }
     // 棚卸日以降の調貨を適用（EC）
     if(ecHasStockGlobal){
       Object.keys(transferCache).filter(date=>date>=ecStocktakeDate&&date<=d).sort().forEach(date=>{
         (transferCache[date]||[]).forEach(t=>{
           if(t.item!==item) return;
-          const units=t.units||(t.boxes||0)*ecBoxQty;
-          if(t.from==='EC'){
+          const units=t.units||(t.boxes||0)*(t.from==='EC'?ecBoxQty:deptBoxQty);
+          if(t.from==='EC'&&t.to==='VT百貨'){
+            let remainUnits=units;
+            const deptPoolUnits=ecDeptBoxes*deptBoxQty+ecDeptLoose;
+            const useFromDept=Math.min(deptPoolUnits, remainUnits);
+            const newDeptPoolUnits=deptPoolUnits-useFromDept;
+            ecDeptBoxes=Math.floor(newDeptPoolUnits/deptBoxQty); ecDeptLoose=newDeptPoolUnits%deptBoxQty;
+            remainUnits-=useFromDept;
+            if(remainUnits>0){
+              const total=ecOwnBoxes*ecBoxQty+ecLoose-remainUnits;
+              if(total<=0){ecOwnBoxes=0;ecLoose=0;} else {ecOwnBoxes=Math.floor(total/ecBoxQty);ecLoose=total%ecBoxQty;}
+            }
+          } else if(t.from==='EC'){
             const total=ecOwnBoxes*ecBoxQty+ecLoose-units;
             if(total<=0){ecOwnBoxes=0;ecLoose=0;} else {ecOwnBoxes=Math.floor(total/ecBoxQty);ecLoose=total%ecBoxQty;}
           }
           if(t.to==='EC'&&t.from!=='VT百貨'){
             const total=ecOwnBoxes*ecBoxQty+ecLoose+units;
             ecOwnBoxes=Math.floor(total/ecBoxQty);ecLoose=total%ecBoxQty;
+          }
+          if(t.from==='VT百貨'&&t.to==='EC'){
+            const poolUnits=ecDeptBoxes*deptBoxQty+ecDeptLoose+units;
+            ecDeptBoxes=Math.floor(poolUnits/deptBoxQty); ecDeptLoose=poolUnits%deptBoxQty;
           }
         });
       });
@@ -3962,7 +4026,7 @@ window.renderGuestAnalytics=async function(){
 
     // EC通路（自社EC在庫＋EC倉に紐づく百貨分の箱も含む）
     const ecTotalBoxes=ecOwnBoxes+ecDeptBoxes;
-    const ecVal=ecOwnBoxes*ecBoxQty*price+ecLoose*price+ecDeptBoxes*deptBoxQty*price;
+    const ecVal=ecOwnBoxes*ecBoxQty*price+ecLoose*price+ecDeptBoxes*deptBoxQty*price+ecDeptLoose*price;
     channelData['EC'].boxes+=ecTotalBoxes; channelData['EC'].value+=ecVal;
     brandData[br.label].boxes+=ecTotalBoxes; brandData[br.label].value+=ecVal;
     brandData[br.label].ch['EC'].boxes+=ecTotalBoxes; brandData[br.label].ch['EC'].value+=ecVal;
@@ -4218,18 +4282,19 @@ window.addTransferRow = function(){
     }
     function getInitial(ch){
       const stDate=getStocktakeDate(ch);
-      if(stDate==='0000-00-00') return {boxes:0,deptBoxes:0};
+      if(stDate==='0000-00-00') return {boxes:0,deptBoxes:0,deptLoose:0};
       const raw=allData[ch][stDate]||{};
       const val=raw[item];
-      if(typeof val==='object') return {boxes:val.boxes||0, deptBoxes:val.deptBoxes||0};
-      return {boxes:Number(val)||0, deptBoxes:0};
+      if(typeof val==='object') return {boxes:val.boxes||0, deptBoxes:val.deptBoxes||0, deptLoose:val.deptLoose||0};
+      return {boxes:Number(val)||0, deptBoxes:0, deptLoose:0};
     }
 
-    // FROM の現在庫存を計算（EC は ecBoxes / deptBoxes 分離）
+    // FROM の現在庫存を計算（EC は ecBoxes / deptBoxes+deptLoose 分離）
     const stDate=getStocktakeDate(from);
     let init=getInitial(from);
     let ecBoxes=from==='EC'?init.boxes:0;
     let ecDeptBoxes=from==='EC'?init.deptBoxes:0;
+    let ecDeptLoose=from==='EC'?(init.deptLoose||0):0;
     let otherBoxes=from!=='EC'?init.boxes:0;
 
     function applyTransfer(t){
@@ -4237,12 +4302,18 @@ window.addTransferRow = function(){
       const tFromQty=t.from==='EC'?ecBoxQty:deptBoxQty;
       const tUnits=t.units||(t.boxes||0)*tFromQty;
       if(from==='EC'){
-        if(t.from==='VT百貨'&&t.to==='EC'){ ecDeptBoxes+=Math.floor(tUnits/deptBoxQty); }
+        if(t.from==='VT百貨'&&t.to==='EC'){
+          const poolUnits=ecDeptBoxes*deptBoxQty+ecDeptLoose+tUnits;
+          ecDeptBoxes=Math.floor(poolUnits/deptBoxQty); ecDeptLoose=poolUnits%deptBoxQty;
+        }
         else if(t.from==='EC'&&t.to==='VT百貨'){
-          // EC→百貨: 優先順位 deptBoxes→ecBoxes（個数ベース）
+          // EC→百貨: 優先順位 deptBoxes+deptLoose→ecBoxes（個数ベース）
           let remainUnits=tUnits;
-          const useDept=Math.min(ecDeptBoxes, Math.floor(remainUnits/deptBoxQty));
-          ecDeptBoxes-=useDept; remainUnits-=useDept*deptBoxQty;
+          const deptPoolUnits=ecDeptBoxes*deptBoxQty+ecDeptLoose;
+          const useFromDept=Math.min(deptPoolUnits, remainUnits);
+          const newDeptPoolUnits=deptPoolUnits-useFromDept;
+          ecDeptBoxes=Math.floor(newDeptPoolUnits/deptBoxQty); ecDeptLoose=newDeptPoolUnits%deptBoxQty;
+          remainUnits-=useFromDept;
           const useEc=Math.ceil(remainUnits/ecBoxQty);
           ecBoxes=Math.max(0,ecBoxes-useEc);
         }
@@ -4261,13 +4332,14 @@ window.addTransferRow = function(){
     // 必要箱数チェック
     let ok=false, detail='';
     if(from==='EC'){
-      // EC→他通路の場合: deptBoxes優先で個数を引く、足りなければecBoxesから
+      // EC→他通路の場合: deptBoxes+deptLoose優先で個数を引く、足りなければecBoxesから
       let remainUnits=units;
-      const useDept=Math.min(ecDeptBoxes, Math.floor(remainUnits/deptBoxQty));
-      remainUnits-=useDept*deptBoxQty;
+      const deptPoolUnits=ecDeptBoxes*deptBoxQty+ecDeptLoose;
+      const useFromDept=Math.min(deptPoolUnits, remainUnits);
+      remainUnits-=useFromDept;
       const useEcBoxes=Math.ceil(remainUnits/ecBoxQty);
       ok = useEcBoxes<=ecBoxes;
-      detail=`EC現在庫：百貨箱${ecDeptBoxes}箱 + EC箱${ecBoxes}箱\n必要：百貨箱${useDept}箱を使用後、EC箱${useEcBoxes}箱が必要`;
+      detail=`EC現在庫：百貨分${ecDeptBoxes}箱${ecDeptLoose>0?`+${ecDeptLoose}個`:''} + EC箱${ecBoxes}箱\n必要：百貨分${useFromDept}個を使用後、EC箱${useEcBoxes}箱が必要`;
     } else {
       const needBoxes=Math.ceil(units/fromBoxQty);
       ok = needBoxes<=otherBoxes;
@@ -4405,8 +4477,9 @@ function calcDistMapWithTransfer(d){
   // 全品目・全通路を初期化
   Object.keys(distMap).forEach(item=>{
     ['VT百貨','EC','WEB','買取'].forEach(ch=>{
-      if(!distMap[item][ch]) distMap[item][ch]={boxes:0,loose:0,deptBoxes:0};
+      if(!distMap[item][ch]) distMap[item][ch]={boxes:0,loose:0,deptBoxes:0,deptLoose:0};
       if(!distMap[item][ch].deptBoxes) distMap[item][ch].deptBoxes=0;
+      if(!distMap[item][ch].deptLoose) distMap[item][ch].deptLoose=0;
     });
   });
   // 調貨を適用
@@ -4416,29 +4489,48 @@ function calcDistMapWithTransfer(d){
       if(!t.item||!t.from||!t.to) return;
       if(!distMap[t.item]) distMap[t.item]={};
       ['VT百貨','EC','WEB','買取'].forEach(ch=>{
-        if(!distMap[t.item][ch]) distMap[t.item][ch]={boxes:0,loose:0,deptBoxes:0};
+        if(!distMap[t.item][ch]) distMap[t.item][ch]={boxes:0,loose:0,deptBoxes:0,deptLoose:0};
       });
       const p=priceMap[t.item]||{};
-      const fromBoxQty=t.from==='EC'?(p.ecQty||p.qty||1):(p.qty||1);
-      const toBoxQty=t.to==='EC'?(p.ecQty||p.qty||1):(p.qty||1);
+      const deptBoxQty=p.qty||1;
+      const ecBoxQty=p.ecQty||p.qty||1;
+      const fromBoxQty=t.from==='EC'?ecBoxQty:deptBoxQty;
+      const toBoxQty=t.to==='EC'?ecBoxQty:deptBoxQty;
       // 個数を計算
       const units=t.units||(t.boxes||0)*fromBoxQty;
-      // FROM から引く
-      const fromBoxes=Math.floor(units/fromBoxQty);
-      const fromLoose=units%fromBoxQty;
-      distMap[t.item][t.from].boxes=Math.max(0,(distMap[t.item][t.from].boxes||0)-fromBoxes);
-      distMap[t.item][t.from].loose=Math.max(0,(distMap[t.item][t.from].loose||0)-fromLoose);
-      // TO へ足す
       if(t.from==='VT百貨'&&t.to==='EC'){
-        // 百貨→EC：百貨箱のまま EC の deptBoxes に追加
-        distMap[t.item].EC.deptBoxes=(distMap[t.item].EC.deptBoxes||0)+fromBoxes;
+        // 百貨→EC：百貨の箱数単位で出庫元から引き、個数のまま EC の deptBoxes/deptLoose（尾数）に追加
+        const fromBoxes=Math.floor(units/deptBoxQty);
+        const fromLoose=units%deptBoxQty;
+        distMap[t.item]['VT百貨'].boxes=Math.max(0,(distMap[t.item]['VT百貨'].boxes||0)-fromBoxes);
+        distMap[t.item]['VT百貨'].loose=Math.max(0,(distMap[t.item]['VT百貨'].loose||0)-fromLoose);
+        const poolUnits=(distMap[t.item].EC.deptBoxes||0)*deptBoxQty+(distMap[t.item].EC.deptLoose||0)+units;
+        distMap[t.item].EC.deptBoxes=Math.floor(poolUnits/deptBoxQty);
+        distMap[t.item].EC.deptLoose=poolUnits%deptBoxQty;
       } else if(t.from==='EC'&&t.to==='VT百貨'){
-        // EC→百貨：百貨の箱数に換算して追加、ECのdeptBoxesから引く
-        const toBoxes=Math.floor(units/(p.qty||1));
-        distMap[t.item][t.to].boxes=(distMap[t.item][t.to].boxes||0)+toBoxes;
-        distMap[t.item].EC.deptBoxes=Math.max(0,(distMap[t.item].EC.deptBoxes||0)-fromBoxes);
+        // EC→百貨：EC倉に紐づく「百貨分」(deptBoxes+deptLoose) を個数ベースで優先消費、不足分はECの自社箱/バラから
+        let remainUnits=units;
+        const deptPoolUnits=(distMap[t.item].EC.deptBoxes||0)*deptBoxQty+(distMap[t.item].EC.deptLoose||0);
+        const useFromDept=Math.min(deptPoolUnits, remainUnits);
+        const newDeptPoolUnits=deptPoolUnits-useFromDept;
+        distMap[t.item].EC.deptBoxes=Math.floor(newDeptPoolUnits/deptBoxQty);
+        distMap[t.item].EC.deptLoose=newDeptPoolUnits%deptBoxQty;
+        remainUnits-=useFromDept;
+        if(remainUnits>0){
+          const ecPoolUnits=(distMap[t.item].EC.boxes||0)*ecBoxQty+(distMap[t.item].EC.loose||0)-remainUnits;
+          if(ecPoolUnits<=0){ distMap[t.item].EC.boxes=0; distMap[t.item].EC.loose=0; }
+          else { distMap[t.item].EC.boxes=Math.floor(ecPoolUnits/ecBoxQty); distMap[t.item].EC.loose=ecPoolUnits%ecBoxQty; }
+        }
+        // 百貨側に個数のまま加算
+        const toPoolUnits=(distMap[t.item]['VT百貨'].boxes||0)*deptBoxQty+(distMap[t.item]['VT百貨'].loose||0)+units;
+        distMap[t.item]['VT百貨'].boxes=Math.floor(toPoolUnits/deptBoxQty);
+        distMap[t.item]['VT百貨'].loose=toPoolUnits%deptBoxQty;
       } else {
         // 通常換算
+        const fromBoxes=Math.floor(units/fromBoxQty);
+        const fromLoose=units%fromBoxQty;
+        distMap[t.item][t.from].boxes=Math.max(0,(distMap[t.item][t.from].boxes||0)-fromBoxes);
+        distMap[t.item][t.from].loose=Math.max(0,(distMap[t.item][t.from].loose||0)-fromLoose);
         const toBoxes=Math.floor(units/toBoxQty);
         const toLoose=units%toBoxQty;
         distMap[t.item][t.to].boxes=(distMap[t.item][t.to].boxes||0)+toBoxes;
@@ -4709,10 +4801,11 @@ async function renderECDashInto(d, gridId, summaryId, unitKey, brandTabsId){
     const card=document.createElement('div'); card.className='brand-card';
     let brVal=0;
     const rows=br.items.map(item=>{
-      const chItem=chStock[item]||{boxes:0,loose:0,deptBoxes:0};
+      const chItem=chStock[item]||{boxes:0,loose:0,deptBoxes:0,deptLoose:0};
       let boxes=useChannelStock?chItem.boxes:0;
       let loose=useChannelStock?chItem.loose:0;
       let deptBoxes=useChannelStock?(chItem.deptBoxes||0):0;
+      let deptLoose=useChannelStock?(chItem.deptLoose||0):0;
       const p=priceMap[item]||{};
       const ecBoxQty2=p.ecQty||p.qty||1;
       const deptBoxQty2=p.qty||1;
@@ -4720,12 +4813,15 @@ async function renderECDashInto(d, gridId, summaryId, unitKey, brandTabsId){
       Object.keys(transferCache).filter(date=>date>=ecStocktakeDate&&date<=d).sort().forEach(date=>{
         (transferCache[date]||[]).forEach(t=>{
           if(t.item!==item) return;
-          const units=t.units||(t.boxes||0)*ecBoxQty2;
+          const units=t.units||(t.boxes||0)*(t.from==='EC'?ecBoxQty2:deptBoxQty2);
           if(t.from==='EC'&&t.to==='VT百貨'){
-            // EC→百貨: deptBoxes 優先で引き、残りを ecBoxes から
+            // EC→百貨: 百貨分（deptBoxes+deptLoose）を個数ベースで優先消費、残りをEC自社箱/バラから
             let remainUnits=units;
-            const useDept=Math.min(deptBoxes, Math.floor(remainUnits/deptBoxQty2));
-            deptBoxes-=useDept; remainUnits-=useDept*deptBoxQty2;
+            const deptPoolUnits=deptBoxes*deptBoxQty2+deptLoose;
+            const useFromDept=Math.min(deptPoolUnits, remainUnits);
+            const newDeptPoolUnits=deptPoolUnits-useFromDept;
+            deptBoxes=Math.floor(newDeptPoolUnits/deptBoxQty2); deptLoose=newDeptPoolUnits%deptBoxQty2;
+            remainUnits-=useFromDept;
             if(remainUnits>0){
               const totalUnits=boxes*ecBoxQty2+loose-remainUnits;
               if(totalUnits<=0){ boxes=0; loose=0; }
@@ -4740,21 +4836,25 @@ async function renderECDashInto(d, gridId, summaryId, unitKey, brandTabsId){
             const totalUnits=boxes*ecBoxQty2+loose+units;
             boxes=Math.floor(totalUnits/ecBoxQty2); loose=totalUnits%ecBoxQty2;
           }
-          if(t.from==='VT百貨'&&t.to==='EC'){ deptBoxes+=Math.floor(units/deptBoxQty2); }
+          if(t.from==='VT百貨'&&t.to==='EC'){
+            // 百貨→EC：個数のまま百貨分（deptBoxes+deptLoose）に加算、尾数を切り捨てない
+            const poolUnits=deptBoxes*deptBoxQty2+deptLoose+units;
+            deptBoxes=Math.floor(poolUnits/deptBoxQty2); deptLoose=poolUnits%deptBoxQty2;
+          }
         });
       });
-      const isEmpty=boxes===0&&loose===0&&deptBoxes===0;
+      const isEmpty=boxes===0&&loose===0&&deptBoxes===0&&deptLoose===0;
       if(!isEmpty){ totalItems++; totalBoxes+=boxes+deptBoxes; }
       const ecBoxQty=p.ecQty||p.qty||0;
       const deptBoxQty=p.qty||0;
-      const val=boxes*ecBoxQty*(p.price||0)+deptBoxes*deptBoxQty*(p.price||0)+(loose*(p.price||0));
+      const val=boxes*ecBoxQty*(p.price||0)+deptBoxes*deptBoxQty*(p.price||0)+(loose*(p.price||0))+(deptLoose*(p.price||0));
       brVal+=val; totalValue+=val;
       let display;
       if(showUnit && (ecBoxQty||deptBoxQty)>0){
-        display=`${boxes*ecBoxQty+(loose||0)+deptBoxes*deptBoxQty} 個`;
+        display=`${boxes*ecBoxQty+(loose||0)+deptBoxes*deptBoxQty+deptLoose} 個`;
       } else {
         const ecPart=boxes>0||loose>0?`EC:${boxes}箱${loose>0?` +${loose}個`:''}`:null;
-        const dPart=deptBoxes>0?`百貨:${deptBoxes}箱`:null;
+        const dPart=deptBoxes>0||deptLoose>0?`百貨:${deptBoxes}箱${deptLoose>0?` +${deptLoose}個`:''}`:null;
         display=[ecPart,dPart].filter(Boolean).join(' + ')||`0 箱`;
       }
       return `<div class="brand-row"><span class="rname">${item}</span><div class="stock-val ${isEmpty?'zero':''}" style="font-size:12px;">${display}</div></div>`;
