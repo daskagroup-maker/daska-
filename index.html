@@ -1,4 +1,4 @@
-<!-- DASKA 庫存 v10.7.0.9 2026-06-19 -->
+<!-- DASKA 庫存 v10.7.1.0 2026-09-30 -->
 <!DOCTYPE html>
 <html lang="zh-TW">
 <head>
@@ -895,7 +895,7 @@ input[type="date"]:focus,input[type="text"]:focus{border-color:#378ADD;box-shado
 
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-import { getDatabase, ref, set, get, onValue, remove }
+import { getDatabase, ref, set, get, onValue, remove, runTransaction }
   from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
 
 // ════════════════════════════════
@@ -1280,6 +1280,7 @@ window.saveChannelStock=async function(){
 
 window.resetChannelStock=async function(){
   const d=document.getElementById('channelDateInput').value;
+  if(!d){ alert('日付を選択してください'); return; }
   if(!confirm(`${currentChannelTab} の棚卸データをクリアしますか？`)) return;
   showSyncOverlay('クリア中...');
   try{
@@ -1329,7 +1330,7 @@ window.switchMode=function(mode){
 };
 
 async function startApp(){
-  const today=new Date().toISOString().slice(0,10);
+  const today=localToday();
   document.getElementById('editDateInput').value=today;
   document.getElementById('dashDateInput').value=today;
   document.getElementById('analyticsDateInput').value=today;
@@ -1399,7 +1400,12 @@ function setSyncBadge(state,text){
 }
 function showSyncOverlay(text){document.getElementById('syncOverlayText').textContent=text;document.getElementById('syncOverlay').classList.add('show');}
 function hideSyncOverlay(){document.getElementById('syncOverlay').classList.remove('show');}
-function dateToKey(d){return d.replace(/\./g,'-');}
+function localToday(){const t=new Date();return t.getFullYear()+'-'+String(t.getMonth()+1).padStart(2,'0')+'-'+String(t.getDate()).padStart(2,'0');}
+function dateToKey(d){
+  const k=String(d||'').trim().replace(/\./g,'-');
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(k)) throw new Error('日付が未選択または不正です');
+  return k;
+}
 
 window.toast=function(msg){
   const el=document.getElementById('mainToast');
@@ -1431,6 +1437,7 @@ window.loadDateData = async function(val){  showSyncOverlay('データを読み�
 }
 
 async function saveAllEntry(){
+  if(!document.getElementById('editDateInput').value){ alert('日付を選択してください'); return; }
   const active=[];
   editForm.forEach(row=>row.variants.forEach(v=>{
     if(Number(v.qty)>0 || Number(v.loose)>0){
@@ -1453,6 +1460,7 @@ async function saveAllEntry(){
 
 async function resetEditForm(){
   const d=document.getElementById('editDateInput').value;
+  if(!d){ alert('日付を選択してください'); return; }
   const path=currentMode==='IN'?'inHistory':'cpHistory';
   showSyncOverlay('クリア中...');
   try{await remove(ref(db,`${path}/${dateToKey(d)}`));window.toast('当日データをクリアしました');}
@@ -2627,7 +2635,7 @@ window.exportECXLSX=async function(){
 // 訪客モード
 // ════════════════════════════════
 async function startGuestApp(){
-  const today=new Date().toISOString().slice(0,10);
+  const today=localToday();
   document.getElementById('guestDateInput').value=today;
   document.getElementById('guestAnalyticsDateInput').value=today;
   onValue(ref(db,'.info/connected'),snap=>{
@@ -2867,7 +2875,7 @@ window.switchGuestTab=function(tab){
     const el=document.getElementById('guest-'+t);
     if(el) el.style.display=t===tab?'':'none';
   });
-  const today=new Date().toISOString().slice(0,10);
+  const today=localToday();
   if(tab==='current') renderGuestDashboard();
   if(tab==='dept'){
     const el=document.getElementById('guestDeptDateInput');
@@ -3040,7 +3048,7 @@ window.switchDashTab=function(tab){
     const el=document.getElementById(id);
     if(el) el.style.display=id===`dash-${tab}`?'':'none';
   });
-  const today=new Date().toISOString().slice(0,10);
+  const today=localToday();
   if(tab==='current'){
     if(!document.getElementById('dashDateInput').value) document.getElementById('dashDateInput').value=today;
     loadPriceSettings().then(()=>renderDashboard());
@@ -4198,7 +4206,7 @@ let transferCache = {};
 let pendingTransfers = []; // 未保存の調貨リスト
 
 window.switchDistSubTab = function(tab){
-  const today=new Date().toISOString().slice(0,10);
+  const today=localToday();
   if(!document.getElementById('transferDateInput').value) document.getElementById('transferDateInput').value=today;
   // 品目リストを更新
   const sel=document.getElementById('transferItem');
@@ -4395,17 +4403,19 @@ window.removePending = function(i){
 
 window.deleteTransfer = async function(date, idx){
   if(!confirm('この調貨記録を削除しますか？')) return;
-  const records = [...(transferCache[date]||[])];
-  records.splice(idx, 1);
+  const target = JSON.stringify(Object.values(transferCache[date]||{})[idx]);
   showSyncOverlay('削除中...');
   try{
-    if(records.length===0){
-      await remove(ref(db,`transferHistory/${date}`));
-      delete transferCache[date];
-    } else {
-      await set(ref(db,`transferHistory/${date}`), records);
-      transferCache[date]=records;
-    }
+    const res=await runTransaction(ref(db,`transferHistory/${date}`), cur=>{
+      if(!cur) return cur;
+      const arr=Object.values(cur);
+      const i=arr.findIndex(r=>JSON.stringify(r)===target);
+      if(i<0) return arr;
+      arr.splice(i,1);
+      return arr.length?arr:null;
+    });
+    const v=res.snapshot.val();
+    if(v) transferCache[date]=v; else delete transferCache[date];
     renderTransferHistory();
     window.toast('削除しました');
   } catch(e){ window.toast('削除失敗：'+e.message); }
@@ -4419,11 +4429,13 @@ window.saveTransfer = async function(){
   showSyncOverlay('保存中...');
   try{
     // 既存データを取得してマージ
-    const snap=await get(ref(db,`transferHistory/${dateToKey(d)}`));
-    const existing=snap.val()||[];
-    const newData=[...existing, ...pendingTransfers.map(t=>({...t,time:new Date().toISOString()}))];
-    await set(ref(db,`transferHistory/${dateToKey(d)}`), newData);
-    transferCache[dateToKey(d)]=newData;
+    const now=new Date().toISOString();
+    const adds=pendingTransfers.map(t=>({...t,time:now}));
+    const res=await runTransaction(ref(db,`transferHistory/${dateToKey(d)}`), cur=>{
+      const existing=cur?Object.values(cur):[];
+      return [...existing, ...adds];
+    });
+    transferCache[dateToKey(d)]=res.snapshot.val()||[];
     pendingTransfers=[];
     renderPendingTransfers();
     renderTransferHistory();
@@ -4569,7 +4581,7 @@ async function loadDistData(d){
 }
 
 window.renderDistTab = function(){
-  const today=new Date().toISOString().slice(0,10);
+  const today=localToday();
   if(!document.getElementById('distDateInput').value) document.getElementById('distDateInput').value=today;
   if(!currentDistBrand) currentDistBrand=CP_BRANDS_CONFIG[0].id;
   initDistForm();
@@ -4600,7 +4612,7 @@ function renderDistGrid(){
 
   const grid=document.getElementById('distGrid'); grid.innerHTML='';
   // 計算現在庫存
-  const today=document.getElementById('distDateInput').value||new Date().toISOString().slice(0,10);
+  const today=document.getElementById('distDateInput').value||localToday();
   const allDates=new Set([...Object.keys(inCache),...Object.keys(cpCache)]);
   let stockMap={};
   Array.from(allDates).filter(date=>date<=today).sort().forEach(date=>{
@@ -4675,6 +4687,7 @@ window.distSet=function(item,ch,field,v){
 
 window.saveDistEntry=async function(){
   const d=document.getElementById('distDateInput').value;
+  if(!d){ alert('日付を選択してください'); return; }
   const obj={};
   Object.entries(distForm).forEach(([item,channels])=>{
     const hasAny=DIST_CHANNELS.some(ch=>(Number(channels[ch]?.boxes)||0)>0||(Number(channels[ch]?.loose)||0)>0);
@@ -4697,6 +4710,7 @@ window.saveDistEntry=async function(){
 
 window.resetDistForm=async function(){
   const d=document.getElementById('distDateInput').value;
+  if(!d){ alert('日付を選択してください'); return; }
   if(!confirm(`クリアしてもよろしいですか ${d} 的配分資料？`)) return;
   showSyncOverlay('クリア中...');
   try{ await remove(ref(db,`distHistory/${dateToKey(d)}`)); window.toast('クリアしました'); }
@@ -4999,7 +5013,7 @@ window.switchTab=function(t){
   document.getElementById('view-dist').classList.toggle('active',t==='dist');
   document.getElementById('view-price').classList.toggle('active',t==='price');
   document.getElementById('view-analytics').classList.toggle('active',t==='analytics');
-  const today=new Date().toISOString().slice(0,10);
+  const today=localToday();
   if(t==='dash'){ switchDashTab('current'); }
   if(t==='dept'){
     if(!document.getElementById('deptMainDateInput').value) document.getElementById('deptMainDateInput').value=today;
@@ -5019,7 +5033,7 @@ window.switchTab=function(t){
   }
   if(t==='dist'){ switchDistSubTab('transfer'); }
   if(t==='analytics'){
-    const today=new Date().toISOString().slice(0,10);
+    const today=localToday();
     if(!document.getElementById('analyticsDateInput').value) document.getElementById('analyticsDateInput').value=today;
     renderAnalytics();
   }
@@ -5180,7 +5194,7 @@ window.switchDeptMainTab=function(tab){
   document.getElementById('dept-history').style.display=tab==='history'?'':'none';
   if(tab==='stock') renderDeptDashMain();
   if(tab==='count'){
-    const today=new Date().toISOString().slice(0,10);
+    const today=localToday();
     if(!document.getElementById('deptCountDateInput').value) document.getElementById('deptCountDateInput').value=today;
     loadDeptChannelStock(document.getElementById('deptCountDateInput').value);
   }
@@ -5197,7 +5211,7 @@ window.switchECMainTab=function(tab){
   document.getElementById('ec-history').style.display=tab==='history'?'':'none';
   if(tab==='stock') renderECDashMain();
   if(tab==='count'){
-    const today=new Date().toISOString().slice(0,10);
+    const today=localToday();
     if(!document.getElementById('ecCountDateInput').value) document.getElementById('ecCountDateInput').value=today;
     loadECChannelStock(document.getElementById('ecCountDateInput').value);
   }
@@ -5214,7 +5228,7 @@ window.switchWebMainTab=function(tab){
   document.getElementById('web-history').style.display=tab==='history'?'':'none';
   if(tab==='stock') renderWebMainDash();
   if(tab==='count'){
-    const today=new Date().toISOString().slice(0,10);
+    const today=localToday();
     if(!document.getElementById('webCountDateInput').value) document.getElementById('webCountDateInput').value=today;
     loadWebChannelStock(document.getElementById('webCountDateInput').value);
   }
@@ -5231,7 +5245,7 @@ window.switchKaitoriMainTab=function(tab){
   document.getElementById('kaitori-history').style.display=tab==='history'?'':'none';
   if(tab==='stock') renderKaitoriMainDash();
   if(tab==='count'){
-    const today=new Date().toISOString().slice(0,10);
+    const today=localToday();
     if(!document.getElementById('kaitoriCountDateInput').value) document.getElementById('kaitoriCountDateInput').value=today;
     loadKaitoriChannelStock(document.getElementById('kaitoriCountDateInput').value);
   }
@@ -5404,6 +5418,7 @@ window.saveDeptChannelStock=async function(){
 };
 window.resetDeptChannelStock=async function(){
   const d=document.getElementById('deptCountDateInput').value;
+  if(!d){ alert('日付を選択してください'); return; }
   if(!confirm('百貨棚卸データをクリアしますか？')) return;
   showSyncOverlay('クリア中...');
   try{ await remove(ref(db,`channelStock/VT百貨/${dateToKey(d)}`)); deptCountForm={}; renderDeptCountGrid(); window.toast('クリアしました'); }
@@ -5522,6 +5537,7 @@ window.saveWebChannelStock=async function(){
 };
 window.resetWebChannelStock=async function(){
   const d=document.getElementById('webCountDateInput').value;
+  if(!d){ alert('日付を選択してください'); return; }
   if(!confirm('WEB棚卸データをクリアしますか？')) return;
   showSyncOverlay('クリア中...');
   try{ await remove(ref(db,`channelStock/WEB/${dateToKey(d)}`)); webCountForm={}; renderWebCountGrid(); window.toast('クリアしました'); }
@@ -5629,6 +5645,7 @@ window.saveKaitoriChannelStock=async function(){
 };
 window.resetKaitoriChannelStock=async function(){
   const d=document.getElementById('kaitoriCountDateInput').value;
+  if(!d){ alert('日付を選択してください'); return; }
   if(!confirm('買取棚卸データをクリアしますか？')) return;
   showSyncOverlay('クリア中...');
   try{ await remove(ref(db,`channelStock/買取/${dateToKey(d)}`)); kaitoriCountForm={}; renderKaitoriCountGrid(); window.toast('クリアしました'); }
@@ -5744,6 +5761,7 @@ window.saveECChannelStock=async function(){
 };
 window.resetECChannelStock=async function(){
   const d=document.getElementById('ecCountDateInput').value;
+  if(!d){ alert('日付を選択してください'); return; }
   if(!confirm('EC棚卸データをクリアしますか？')) return;
   showSyncOverlay('クリア中...');
   try{ await remove(ref(db,`channelStock/EC/${dateToKey(d)}`)); ecCountForm={}; renderECCountGrid(); window.toast('クリアしました'); }
