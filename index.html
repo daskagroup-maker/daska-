@@ -1,4 +1,4 @@
-<!-- DASKA 庫存 v10.7.1.0 2026-09-30 -->
+<!-- DASKA 庫存 v10.7.1.2 2026-10-01 -->
 <!DOCTYPE html>
 <html lang="zh-TW">
 <head>
@@ -895,7 +895,7 @@ input[type="date"]:focus,input[type="text"]:focus{border-color:#378ADD;box-shado
 
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-import { getDatabase, ref, set, get, onValue, remove, runTransaction }
+import { getDatabase, ref, set, get, onValue, remove, runTransaction, query, orderByKey, endAt, limitToLast }
   from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
 
 // ════════════════════════════════
@@ -1199,30 +1199,30 @@ function renderChannelStockGrid(){
         <div class="variant-row${filled?' filled':''}">
           <span class="v-label">EC箱数</span>
           <div class="qty-stepper">
-            <button onclick="chStep('${item}','boxes',-1)">−</button>
+            <button onclick="chStep('${escJs(item)}','boxes',-1)">−</button>
             <input type="number" class="qty-val" inputmode="numeric" enterkeyhint="done"
-              value="${boxes}" oninput="chSet('${item}','boxes',this.value)"
+              value="${boxes}" oninput="chSet('${escJs(item)}','boxes',this.value)"
               onkeydown="if(event.key==='Enter'){this.blur();}">
-            <button onclick="chStep('${item}','boxes',1)">+</button>
+            <button onclick="chStep('${escJs(item)}','boxes',1)">+</button>
           </div>
         </div>
         ${currentChannelTab==='EC'?`
         <div class="variant-row" style="background:#FFF8E1;">
           <span class="v-label" style="color:#92400E;">百貨箱</span>
           <div class="qty-stepper">
-            <button onclick="chStep('${item}','deptBoxes',-1)">−</button>
+            <button onclick="chStep('${escJs(item)}','deptBoxes',-1)">−</button>
             <input type="number" class="qty-val" inputmode="numeric" enterkeyhint="done"
               value="${channelStockForm[item+'_deptBoxes']||''}" placeholder="0"
-              oninput="chSet('${item}','deptBoxes',this.value)"
+              oninput="chSet('${escJs(item)}','deptBoxes',this.value)"
               onkeydown="if(event.key==='Enter'){this.blur();}">
-            <button onclick="chStep('${item}','deptBoxes',1)">+</button>
+            <button onclick="chStep('${escJs(item)}','deptBoxes',1)">+</button>
           </div>
         </div>
         <div style="padding:0 14px 8px;display:flex;align-items:center;gap:6px;">
           <span style="font-size:12px;color:#92400E;white-space:nowrap;">＋百貨尾数</span>
           <input type="number" class="note-input" placeholder="個数" min="0" inputmode="numeric" enterkeyhint="done"
             value="${channelStockForm[item+'_deptLoose']||''}"
-            oninput="chSet('${item}','deptLoose',this.value)"
+            oninput="chSet('${escJs(item)}','deptLoose',this.value)"
             onkeydown="if(event.key==='Enter'){this.blur();}"
             style="width:80px;font-size:12px;padding:4px 8px;border:1px dashed #F0C36D;border-radius:6px;outline:none;color:#92400E;background:#FFFBF0;text-align:right;"
             onfocus="this.style.borderColor='#DD9F1E'" onblur="this.style.borderColor='#F0C36D'">
@@ -1232,7 +1232,7 @@ function renderChannelStockGrid(){
           <span style="font-size:12px;color:var(--text-secondary);white-space:nowrap;">＋バラ</span>
           <input type="number" class="note-input" placeholder="個数" min="0" inputmode="numeric" enterkeyhint="done"
             value="${channelStockForm[item+'_loose']||''}"
-            oninput="chSet('${item}','loose',this.value)"
+            oninput="chSet('${escJs(item)}','loose',this.value)"
             onkeydown="if(event.key==='Enter'){this.blur();}"
             style="width:80px;font-size:12px;padding:4px 8px;border:1px dashed #CBD5E1;border-radius:6px;outline:none;color:var(--text-secondary);background:#FAFAFA;text-align:right;"
             onfocus="this.style.borderColor='var(--blue-mid)'" onblur="this.style.borderColor='#CBD5E1'">
@@ -1294,22 +1294,22 @@ window.resetChannelStock=async function(){
 
 // 通路棚卸を考慮した在庫取得（最新の棚卸日以降の入庫も考慮）
 // 指定通路の最新棚卸日付を返す
+async function getLatestChannelSnap(channel, d){
+  const snap=await get(query(ref(db,`channelStock/${channel}`), orderByKey(), endAt(d), limitToLast(1)));
+  const data=snap.val()||{};
+  const k=Object.keys(data)[0];
+  return k?{date:k, raw:data[k]||{}}:null;
+}
 async function getChannelStockDate(channel, d){
-  try{
-    const snap=await get(ref(db,`channelStock/${channel}`));
-    const data=snap.val()||{};
-    const dates=Object.keys(data).filter(dt=>dt<=d).sort();
-    return dates.length>0?dates[dates.length-1]:'0000-00-00';
-  } catch(e){ return '0000-00-00'; }
+  try{ const r=await getLatestChannelSnap(channel,d); return r?r.date:'0000-00-00'; }
+  catch(e){ return '0000-00-00'; }
 }
 
 async function getChannelStock(channel, d){
   try{
-    const snap=await get(ref(db,`channelStock/${channel}`));
-    const data=snap.val()||{};
-    const dates=Object.keys(data).filter(dt=>dt<=d).sort();
-    if(dates.length===0) return {};
-    const raw=data[dates[dates.length-1]]||{};
+    const r=await getLatestChannelSnap(channel,d);
+    if(!r) return {};
+    const raw=r.raw;
     // normalize: {item: number} or {item: {boxes, loose}}
     const result={};
     Object.entries(raw).forEach(([item,val])=>{
@@ -1400,6 +1400,8 @@ function setSyncBadge(state,text){
 }
 function showSyncOverlay(text){document.getElementById('syncOverlayText').textContent=text;document.getElementById('syncOverlay').classList.add('show');}
 function hideSyncOverlay(){document.getElementById('syncOverlay').classList.remove('show');}
+function escJs(v){return String(v).replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/"/g,'&quot;');}
+function formBaseKeys(f){return [...new Set(Object.keys(f).map(k=>k.replace(/_(loose|deptBoxes|deptLoose)$/,'')))];}
 function localToday(){const t=new Date();return t.getFullYear()+'-'+String(t.getMonth()+1).padStart(2,'0')+'-'+String(t.getDate()).padStart(2,'0');}
 function dateToKey(d){
   const k=String(d||'').trim().replace(/\./g,'-');
@@ -4648,18 +4650,18 @@ function renderDistGrid(){
         <span class="v-label" style="font-weight:600;min-width:40px;">${ch}</span>
         <div style="display:flex;align-items:center;gap:4px;flex:1;justify-content:flex-end;">
           <div class="qty-stepper">
-            <button onclick="distStep('${item}','${ch}','boxes',-1)">−</button>
+            <button onclick="distStep('${escJs(item)}','${ch}','boxes',-1)">−</button>
             <input type="number" class="qty-val" inputmode="numeric" enterkeyhint="done"
               value="${v.boxes||''}" placeholder="箱"
-              oninput="distSet('${item}','${ch}','boxes',this.value)"
+              oninput="distSet('${escJs(item)}','${ch}','boxes',this.value)"
               onkeydown="if(event.key==='Enter'){this.blur();}">
-            <button onclick="distStep('${item}','${ch}','boxes',1)">+</button>
+            <button onclick="distStep('${escJs(item)}','${ch}','boxes',1)">+</button>
           </div>
           <span style="font-size:11px;color:var(--text-secondary);">箱</span>
           <input type="number" class="qty-val" inputmode="numeric" enterkeyhint="done"
             value="${v.loose||''}" placeholder="個"
             style="width:48px;border:1px solid #CBD5E1;border-radius:6px;text-align:center;font-size:12px;padding:4px;"
-            oninput="distSet('${item}','${ch}','loose',this.value)"
+            oninput="distSet('${escJs(item)}','${ch}','loose',this.value)"
             onkeydown="if(event.key==='Enter'){this.blur();}">
           <span style="font-size:11px;color:var(--text-secondary);">個</span>
         </div>
@@ -5108,7 +5110,8 @@ function renderChannelHistoryContent(channel, elId, data, dates, itemOrder, chCo
         const v=items[item];
         const boxes=typeof v==='object'?v?.boxes||0:Number(v)||0;
         const deptBoxes=typeof v==='object'?v?.deptBoxes||0:0;
-        return boxes>0||deptBoxes>0;
+        const loose=typeof v==='object'?(v?.loose||0)+(v?.deptLoose||0):0;
+        return boxes>0||deptBoxes>0||loose>0;
       });
       if(brItems.length===0) return '';
       const rows=brItems.map(item=>{
@@ -5125,6 +5128,8 @@ function renderChannelHistoryContent(channel, elId, data, dates, itemOrder, chCo
         let stockStr=`<span style="font-weight:700;font-size:15px;">${boxes}箱</span>`;
         if(deptBoxes>0) stockStr+=` <span style="background:#FFF8E1;color:#92400E;font-size:11px;padding:2px 6px;border-radius:4px;font-weight:600;">百貨:${deptBoxes}箱</span>`;
         if(loose>0) stockStr+=` <span style="color:var(--text-secondary);font-size:12px;">+${loose}個</span>`;
+        const deptLooseH=typeof v==='object'?v?.deptLoose||0:0;
+        if(deptLooseH>0) stockStr+=` <span style="background:#FFF8E1;color:#92400E;font-size:11px;padding:2px 6px;border-radius:4px;font-weight:600;">百貨バラ:${deptLooseH}個</span>`;
         const itemEsc=item.replace(/&/g,'&amp;').replace(/"/g,'&quot;');
         return `<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 14px;border-bottom:1px solid #F1F5F9;">
           <span style="font-size:13px;">${item}</span>
@@ -5406,7 +5411,7 @@ window.saveDeptChannelStock=async function(){
   const d=document.getElementById('deptCountDateInput').value;
   if(!d){ alert('日付を選択してください'); return; }
   const obj={};
-  Object.keys(deptCountForm).filter(k=>!k.includes('_loose')&&!k.includes('_deptBoxes')).forEach(item=>{
+  formBaseKeys(deptCountForm).forEach(item=>{
     const boxes=Number(deptCountForm[item])||0;
     const loose=Number(deptCountForm[item+'_loose'])||0;
     if(boxes>0||loose>0){ obj[item]={boxes}; if(loose>0) obj[item].loose=loose; }
@@ -5453,9 +5458,9 @@ function renderDeptCountGrid(){
       html+=`<div class="variant-row${filled?' filled':''}">
           <span class="v-label">${label}</span>
           <div class="qty-stepper">
-            <button onclick="deptCountStep('${key}',-1)">−</button>
-            <input type="number" class="qty-val" inputmode="numeric" value="${boxes}" oninput="deptCountSet('${key}',this.value)" onkeydown="if(event.key==='Enter'){this.blur();}">
-            <button onclick="deptCountStep('${key}',1)">+</button>
+            <button onclick="deptCountStep('${escJs(key)}',-1)">−</button>
+            <input type="number" class="qty-val" inputmode="numeric" value="${boxes}" oninput="deptCountSet('${escJs(key)}',this.value)" onkeydown="if(event.key==='Enter'){this.blur();}">
+            <button onclick="deptCountStep('${escJs(key)}',1)">+</button>
           </div>
         </div>
         <div style="padding:0 14px 8px;display:flex;align-items:center;gap:6px;">
@@ -5466,7 +5471,7 @@ function renderDeptCountGrid(){
         </div>`;
     });
     html+=`</div><div class="card-action-box">
-      <select class="select-ui" onchange="if(this.value){deptCountAddSuffix('${baseItem}',this.value);this.value=''}">
+      <select class="select-ui" onchange="if(this.value){deptCountAddSuffix('${escJs(baseItem)}',this.value);this.value=''}">
         <option value="">＋ 改版を追加...</option>
         ${SUFFIXES.filter(s=>!variantKeys.includes(baseItem+s)).map(s=>`<option value="${s}">${baseItem}${s}</option>`).join('')}
       </select></div>`;
@@ -5525,7 +5530,7 @@ window.saveWebChannelStock=async function(){
   const d=document.getElementById('webCountDateInput').value;
   if(!d){ alert('日付を選択してください'); return; }
   const obj={};
-  Object.keys(webCountForm).filter(k=>!k.includes('_loose')).forEach(item=>{
+  formBaseKeys(webCountForm).forEach(item=>{
     const boxes=Number(webCountForm[item])||0;
     const loose=Number(webCountForm[item+'_loose'])||0;
     if(boxes>0||loose>0){ obj[item]={boxes}; if(loose>0) obj[item].loose=loose; }
@@ -5571,9 +5576,9 @@ function renderWebCountGrid(){
       html+=`<div class="variant-row${filled?' filled':''}">
           <span class="v-label">${label}</span>
           <div class="qty-stepper">
-            <button onclick="webCountStep('${key}',-1)">−</button>
-            <input type="number" class="qty-val" inputmode="numeric" value="${boxes}" oninput="webCountSet('${key}',this.value)" onkeydown="if(event.key==='Enter'){this.blur();}">
-            <button onclick="webCountStep('${key}',1)">+</button>
+            <button onclick="webCountStep('${escJs(key)}',-1)">−</button>
+            <input type="number" class="qty-val" inputmode="numeric" value="${boxes}" oninput="webCountSet('${escJs(key)}',this.value)" onkeydown="if(event.key==='Enter'){this.blur();}">
+            <button onclick="webCountStep('${escJs(key)}',1)">+</button>
           </div>
         </div>
         <div style="padding:0 14px 8px;display:flex;align-items:center;gap:6px;">
@@ -5584,7 +5589,7 @@ function renderWebCountGrid(){
         </div>`;
     });
     html+=`</div><div class="card-action-box">
-      <select class="select-ui" onchange="if(this.value){webCountAddSuffix('${baseItem}',this.value);this.value=''}">
+      <select class="select-ui" onchange="if(this.value){webCountAddSuffix('${escJs(baseItem)}',this.value);this.value=''}">
         <option value="">＋ 改版を追加...</option>
         ${SUFFIXES.filter(s=>!variantKeys.includes(baseItem+s)).map(s=>`<option value="${s}">${baseItem}${s}</option>`).join('')}
       </select></div>`;
@@ -5633,7 +5638,7 @@ window.saveKaitoriChannelStock=async function(){
   const d=document.getElementById('kaitoriCountDateInput').value;
   if(!d){ alert('日付を選択してください'); return; }
   const obj={};
-  Object.keys(kaitoriCountForm).filter(k=>!k.includes('_loose')).forEach(item=>{
+  formBaseKeys(kaitoriCountForm).forEach(item=>{
     const boxes=Number(kaitoriCountForm[item])||0;
     const loose=Number(kaitoriCountForm[item+'_loose'])||0;
     if(boxes>0||loose>0){ obj[item]={boxes}; if(loose>0) obj[item].loose=loose; }
@@ -5679,9 +5684,9 @@ function renderKaitoriCountGrid(){
       html+=`<div class="variant-row${filled?' filled':''}">
           <span class="v-label">${label}</span>
           <div class="qty-stepper">
-            <button onclick="kaitoriCountStep('${key}',-1)">−</button>
-            <input type="number" class="qty-val" inputmode="numeric" value="${boxes}" oninput="kaitoriCountSet('${key}',this.value)" onkeydown="if(event.key==='Enter'){this.blur();}">
-            <button onclick="kaitoriCountStep('${key}',1)">+</button>
+            <button onclick="kaitoriCountStep('${escJs(key)}',-1)">−</button>
+            <input type="number" class="qty-val" inputmode="numeric" value="${boxes}" oninput="kaitoriCountSet('${escJs(key)}',this.value)" onkeydown="if(event.key==='Enter'){this.blur();}">
+            <button onclick="kaitoriCountStep('${escJs(key)}',1)">+</button>
           </div>
         </div>
         <div style="padding:0 14px 8px;display:flex;align-items:center;gap:6px;">
@@ -5692,7 +5697,7 @@ function renderKaitoriCountGrid(){
         </div>`;
     });
     html+=`</div><div class="card-action-box">
-      <select class="select-ui" onchange="if(this.value){kaitoriCountAddSuffix('${baseItem}',this.value);this.value=''}">
+      <select class="select-ui" onchange="if(this.value){kaitoriCountAddSuffix('${escJs(baseItem)}',this.value);this.value=''}">
         <option value="">＋ 改版を追加...</option>
         ${SUFFIXES.filter(s=>!variantKeys.includes(baseItem+s)).map(s=>`<option value="${s}">${baseItem}${s}</option>`).join('')}
       </select></div>`;
@@ -5787,17 +5792,17 @@ function renderECCountGrid(){
         <div class="variant-row${Number(boxes)>0?' filled':''}">
           <span class="v-label">EC箱数</span>
           <div class="qty-stepper">
-            <button onclick="ecCountStep('${item}',-1)">−</button>
-            <input type="number" class="qty-val" inputmode="numeric" value="${boxes}" oninput="ecCountSet('${item}',this.value)" onkeydown="if(event.key==='Enter'){this.blur();}">
-            <button onclick="ecCountStep('${item}',1)">+</button>
+            <button onclick="ecCountStep('${escJs(item)}',-1)">−</button>
+            <input type="number" class="qty-val" inputmode="numeric" value="${boxes}" oninput="ecCountSet('${escJs(item)}',this.value)" onkeydown="if(event.key==='Enter'){this.blur();}">
+            <button onclick="ecCountStep('${escJs(item)}',1)">+</button>
           </div>
         </div>
         <div class="variant-row${Number(deptBoxes)>0?' filled':''}" style="background:#FFF8E1;">
           <span class="v-label" style="color:#92400E;">百貨箱</span>
           <div class="qty-stepper">
-            <button onclick="ecCountStep('${item+'_deptBoxes'}',-1)">−</button>
-            <input type="number" class="qty-val" inputmode="numeric" value="${deptBoxes}" oninput="ecCountSet('${item+'_deptBoxes'}',this.value)" onkeydown="if(event.key==='Enter'){this.blur();}">
-            <button onclick="ecCountStep('${item+'_deptBoxes'}',1)">+</button>
+            <button onclick="ecCountStep('${escJs(item+'_deptBoxes')}',-1)">−</button>
+            <input type="number" class="qty-val" inputmode="numeric" value="${deptBoxes}" oninput="ecCountSet('${escJs(item+'_deptBoxes')}',this.value)" onkeydown="if(event.key==='Enter'){this.blur();}">
+            <button onclick="ecCountStep('${escJs(item+'_deptBoxes')}',1)">+</button>
           </div>
         </div>
         <div style="padding:0 14px 8px;display:flex;align-items:center;gap:6px;">
