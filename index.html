@@ -1,4 +1,4 @@
-<!-- DASKA 庫存 v10.7.1.4 2026-10-01 -->
+<!-- DASKA 庫存 v10.7.2.0 2026-10-01 -->
 <!DOCTYPE html>
 <html lang="zh-TW">
 <head>
@@ -20,7 +20,7 @@
 
 <style>
 *{box-sizing:border-box;margin:0;padding:0;}
-html,body{overflow-x:hidden;}
+html,body{overflow-x:hidden;overflow-x:clip;}
 canvas{max-width:100%;height:auto;}
 :root{
   --blue:#185FA5;--blue-light:#E6F1FB;--blue-mid:#378ADD;--blue-dark:#0C447C;--blue-border:#85B7EB;
@@ -302,7 +302,61 @@ input[type="date"]:focus,input[type="text"]:focus{border-color:#378ADD;box-shado
 .guest-btn:hover{background:#F1F5F9 !important;border-color:#94A3B8 !important;}
 .guest-badge{font-size:12px;font-weight:600;padding:4px 12px;border-radius:999px;background:#FAEEDA;color:#633806;border:1px solid #F5D8A0;}
 .guest-notice{font-size:13px;font-weight:500;color:#633806;background:#FAEEDA;border:1px solid #F5D8A0;border-radius:8px;padding:10px 14px;margin-bottom:16px;display:flex;align-items:center;gap:8px;}
-#guestApp{display:none;}</style>
+#guestApp{display:none;}
+/* ══ スマホ表示最適化 ══ */
+@media(max-width:600px){
+  body{padding:0;padding-bottom:env(safe-area-inset-bottom);}
+  .app{padding:10px;border-radius:0;box-shadow:none;}
+  .top-bar{flex-wrap:nowrap;gap:6px;}
+  .top-bar h1{flex:1 1 auto;min-width:0;font-size:15px;white-space:nowrap;}
+  #syncBadgeText{display:none;}
+  .sync-badge{padding:6px;}
+  .toolbar-layout[style*="sticky"] > label{display:none;}
+  /* タブ：折り返さず横スクロール */
+  .tab-bar{flex-wrap:nowrap !important;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;width:100%;}
+  .tab-bar::-webkit-scrollbar,.sub-tab-bar::-webkit-scrollbar{display:none;}
+  .tab{flex:0 0 auto;padding:9px 12px;font-size:13px;}
+  .app > .tab-bar{position:sticky;top:0;z-index:150;box-shadow:0 2px 6px rgba(0,0,0,0.06);}
+  .sub-tab-bar{flex-wrap:nowrap;scrollbar-width:none;margin-left:-10px;margin-right:-10px;padding-left:10px;padding-right:10px;}
+  .sub-tab{flex:0 0 auto;padding:8px 14px;font-size:14px;}
+  /* ツールバー：日付は横幅いっぱい、ボタンは等分 */
+  .toolbar-layout{gap:6px;}
+  .toolbar-layout > label{margin-left:0 !important;width:100%;font-size:12px !important;margin-bottom:-2px;}
+  .toolbar-layout > input[type="date"]{flex:1 1 100%;width:100%;}
+  .toolbar-layout > .btn{flex:1 1 calc(50% - 6px);justify-content:center;padding:10px 8px;font-size:13px;}
+  .toolbar-layout > div{width:100%;}
+  .toolbar-layout .mode-tab{flex:1;padding:9px 4px !important;font-size:13px !important;}
+  .toolbar-layout[style*="sticky"]{top:44px !important;margin-left:-10px;margin-right:-10px;padding-left:10px !important;padding-right:10px !important;}
+  /* iOS の自動ズーム防止（16px 未満だとズームされる） */
+  input,select,textarea{font-size:16px !important;}
+  input[type="date"]{padding:8px 10px;min-height:40px;}
+  /* 入力カード：1列・大きいボタン */
+  .model-grid{grid-template-columns:1fr !important;gap:10px;}
+  .card-head{padding:10px 12px;}
+  .variant-row{padding:8px 12px;}
+  .qty-stepper button{width:44px;height:40px;font-size:20px;}
+  .qty-val{width:64px;height:40px;}
+  .note-input{width:96px !important;padding:8px !important;}
+  .select-ui{padding:9px 10px;}
+  /* 集計 */
+  .summary-row{grid-template-columns:repeat(auto-fit,minmax(100px,1fr)) !important;gap:6px;margin-bottom:12px;}
+  .stat{padding:8px 10px;}
+  .stat-l{font-size:11px;}
+  .stat-v{font-size:17px;}
+  .brand-row{padding:10px 12px;}
+  .stock-val{font-size:15px;}
+  /* 表は横スクロール */
+  .price-table-wrap,.variant-brand-block{overflow-x:auto;}
+  .price-table th,.price-table td,.variant-item-table th,.variant-item-row td{padding:8px 10px;white-space:nowrap;}
+  .hist-items-grid{grid-template-columns:1fr 1fr;}
+  .hist-date-header{flex-wrap:wrap;row-gap:4px;}
+  .sync-overlay{top:auto;bottom:calc(16px + env(safe-area-inset-bottom));right:50%;transform:translateX(50%);}
+}
+@media(max-width:360px){
+  .hist-items-grid{grid-template-columns:1fr;}
+  .toolbar-layout > .btn{flex:1 1 100%;}
+}
+</style>
 </head>
 <body data-mode="IN">
 
@@ -2027,7 +2081,7 @@ window.exportXLSX=async function(){
   window.toast('Excel エクスポート完了！');
 };
 
-window.exportDeptXLSX=async function(){
+window.exportDeptXLSX=async function(mobile=false){
   const d=document.getElementById('deptMainDateInput').value;
   if(!d){ alert('先に日付を選択してください'); return; }
   showSyncOverlay('Excel 出力中...');
@@ -2075,6 +2129,58 @@ window.exportDeptXLSX=async function(){
   }
   const XLSX=window.XLSX;
   const wb=XLSX.utils.book_new();
+
+  // ── スマホ用：縦一列・在庫ありのみ ──
+  if(mobile){
+    const val=item=>{
+      const v=stockMap[item]||{boxes:0,loose:0};
+      const p=priceMap[item]||{};
+      if(!p.price) return 0;
+      return ((v.boxes||0)*(p.qty||0)+(v.loose||0))*p.price;
+    };
+    const rows=[], kinds=[];
+    const push=(r,k)=>{rows.push(r);kinds.push(k);};
+    let gB=0,gL=0,gV=0;
+    CP_BRANDS_CONFIG.forEach(br=>br.items.forEach(it=>{const v=stockMap[it]||{};gB+=v.boxes||0;gL+=v.loose||0;gV+=val(it);}));
+    push([`百貨在庫　${d}`,'','',''],'title');
+    push(['合計',gB,gL,gV||''],'grand');
+    push(['','','',''],'blank');
+    CP_BRANDS_CONFIG.forEach(br=>{
+      const items=br.items.filter(it=>{const v=stockMap[it]||{};return (v.boxes||0)>0||(v.loose||0)>0;});
+      if(!items.length) return;
+      push([br.label,'箱','個','金額'],'head');
+      let b=0,l=0,vv=0;
+      items.forEach(it=>{
+        const v=stockMap[it]; const x=val(it);
+        b+=v.boxes||0; l+=v.loose||0; vv+=x;
+        push([it,v.boxes||0,v.loose||0,x||''],'item');
+      });
+      push(['小計',b,l,vv||''],'sub');
+      push(['','','',''],'blank');
+    });
+    const ws=XLSX.utils.aoa_to_sheet(rows);
+    ws['!cols']=[{wch:18},{wch:6},{wch:6},{wch:11}];
+    ws['!merges']=[{s:{r:0,c:0},e:{r:0,c:3}}];
+    const fills={head:'E2E8F0',sub:'F1F5F9',grand:'FFF3C4'};
+    rows.forEach((r,ri)=>{
+      for(let c=0;c<4;c++){
+        const addr=XLSX.utils.encode_cell({r:ri,c});
+        if(!ws[addr]) continue;
+        if(c===3&&typeof ws[addr].v==='number') ws[addr].z='¥#,##0';
+        const k=kinds[ri];
+        ws[addr].s={
+          font:{bold:k!=='item',sz:k==='title'?14:12},
+          fill:fills[k]?{patternType:'solid',fgColor:{rgb:fills[k]}}:undefined,
+          alignment:{horizontal:c===0?'left':'right',vertical:'center'}
+        };
+      }
+    });
+    XLSX.utils.book_append_sheet(wb, ws, 'スマホ用');
+    XLSX.writeFile(wb, `DASKA_百貨在庫_スマホ_${d}.xlsx`, {cellStyles:true});
+    hideSyncOverlay();
+    window.toast('Excel エクスポート完了！');
+    return;
+  }
 
   const COL_W = 4;
   const GAP   = 1;
@@ -5464,7 +5570,7 @@ function renderDeptCountGrid(){
         </div>
         <div style="padding:0 14px 8px;display:flex;align-items:center;gap:6px;">
           <span style="font-size:12px;color:var(--text-secondary);">＋バラ</span>
-          <input type="number" class="note-input" placeholder="個数" min="0" inputmode="numeric" value="${loose}" oninput="deptCountSetRaw('${key}_loose',this.value)" onblur="deptCountSet('${key}_loose',this.value)" onkeydown="if(event.key==='Enter'){this.blur();}"
+          <input type="number" class="note-input" placeholder="個数" min="0" inputmode="numeric" value="${loose}" oninput="deptCountSetRaw('${escJs(key)}_loose',this.value)" onblur="deptCountSet('${escJs(key)}_loose',this.value)" onkeydown="if(event.key==='Enter'){this.blur();}"
             style="width:80px;font-size:12px;padding:4px 8px;border:1px dashed #CBD5E1;border-radius:6px;outline:none;background:#FAFAFA;text-align:right;">
           <span style="font-size:12px;color:var(--text-secondary);">個</span>
         </div>`;
@@ -5582,7 +5688,7 @@ function renderWebCountGrid(){
         </div>
         <div style="padding:0 14px 8px;display:flex;align-items:center;gap:6px;">
           <span style="font-size:12px;color:var(--text-secondary);">＋バラ</span>
-          <input type="number" class="note-input" placeholder="個数" min="0" inputmode="numeric" value="${loose}" oninput="webCountSetRaw('${key}_loose',this.value)" onblur="webCountSet('${key}_loose',this.value)" onkeydown="if(event.key==='Enter'){this.blur();}"
+          <input type="number" class="note-input" placeholder="個数" min="0" inputmode="numeric" value="${loose}" oninput="webCountSetRaw('${escJs(key)}_loose',this.value)" onblur="webCountSet('${escJs(key)}_loose',this.value)" onkeydown="if(event.key==='Enter'){this.blur();}"
             style="width:80px;font-size:12px;padding:4px 8px;border:1px dashed #CBD5E1;border-radius:6px;outline:none;background:#FAFAFA;text-align:right;">
           <span style="font-size:12px;color:var(--text-secondary);">個</span>
         </div>`;
@@ -5690,7 +5796,7 @@ function renderKaitoriCountGrid(){
         </div>
         <div style="padding:0 14px 8px;display:flex;align-items:center;gap:6px;">
           <span style="font-size:12px;color:var(--text-secondary);">＋バラ</span>
-          <input type="number" class="note-input" placeholder="個数" min="0" inputmode="numeric" value="${loose}" oninput="kaitoriCountSetRaw('${key}_loose',this.value)" onblur="kaitoriCountSet('${key}_loose',this.value)" onkeydown="if(event.key==='Enter'){this.blur();}"
+          <input type="number" class="note-input" placeholder="個数" min="0" inputmode="numeric" value="${loose}" oninput="kaitoriCountSetRaw('${escJs(key)}_loose',this.value)" onblur="kaitoriCountSet('${escJs(key)}_loose',this.value)" onkeydown="if(event.key==='Enter'){this.blur();}"
             style="width:80px;font-size:12px;padding:4px 8px;border:1px dashed #CBD5E1;border-radius:6px;outline:none;background:#FAFAFA;text-align:right;">
           <span style="font-size:12px;color:var(--text-secondary);">個</span>
         </div>`;
@@ -5806,7 +5912,7 @@ function renderECCountGrid(){
         </div>
         <div style="padding:0 14px 8px;display:flex;align-items:center;gap:6px;">
           <span style="font-size:12px;color:var(--text-secondary);">＋バラ</span>
-          <input type="number" class="note-input" placeholder="個数" min="0" inputmode="numeric" value="${loose}" oninput="ecCountSetRaw('${item}_loose',this.value)" onblur="ecCountSet('${item}_loose',this.value)" onkeydown="if(event.key==='Enter'){this.blur();}"
+          <input type="number" class="note-input" placeholder="個数" min="0" inputmode="numeric" value="${loose}" oninput="ecCountSetRaw('${escJs(item)}_loose',this.value)" onblur="ecCountSet('${escJs(item)}_loose',this.value)" onkeydown="if(event.key==='Enter'){this.blur();}"
             style="width:80px;font-size:12px;padding:4px 8px;border:1px dashed #CBD5E1;border-radius:6px;outline:none;background:#FAFAFA;text-align:right;">
           <span style="font-size:12px;color:var(--text-secondary);">個</span>
         </div>
