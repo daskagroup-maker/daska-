@@ -1,4 +1,4 @@
-<!-- DASKA 庫存 v10.7.1.2 2026-10-01 -->
+<!-- DASKA 庫存 v10.7.1.4 2026-10-01 -->
 <!DOCTYPE html>
 <html lang="zh-TW">
 <head>
@@ -2076,7 +2076,7 @@ window.exportDeptXLSX=async function(){
   const XLSX=window.XLSX;
   const wb=XLSX.utils.book_new();
 
-  const COL_W = 5;
+  const COL_W = 4;
   const GAP   = 1;
   const BLOCK = COL_W + GAP;
 
@@ -2097,49 +2097,49 @@ window.exportDeptXLSX=async function(){
     grid[2][c]   = `${br.label} 品目`;
     grid[2][c+1] = '箱数';
     grid[2][c+2] = '個数';
-    grid[2][c+3] = '単価';
-    grid[2][c+4] = '金額';
+    grid[2][c+3] = '総金額';
   });
 
+  const itemValue = item=>{
+    const v=stockMap[item]||{boxes:0,loose:0};
+    const p=priceMap[item]||{};
+    if(!p.price) return 0;
+    return ((v.boxes||0)*(p.qty||0)+(v.loose||0))*p.price;
+  };
   CP_BRANDS_CONFIG.forEach((br,bi)=>{
     const c = brStarts[bi];
     br.items.forEach((item,ii)=>{
       const v = stockMap[item]||{boxes:0,loose:0};
       const p = priceMap[item]||{};
-      const qty = p.qty||0;
-      const price = p.price||0;
-      const totalUnits = v.boxes*qty + (v.loose||0);
-      const val = qty>0&&price>0 ? totalUnits*price : '';
+      const val = itemValue(item);
       grid[HEADER_ROWS+ii][c]   = item;
       grid[HEADER_ROWS+ii][c+1] = v.boxes||0;
-      grid[HEADER_ROWS+ii][c+2] = qty||'';
-      grid[HEADER_ROWS+ii][c+3] = price||'';
-      grid[HEADER_ROWS+ii][c+4] = val;
+      grid[HEADER_ROWS+ii][c+2] = v.loose||0;
+      grid[HEADER_ROWS+ii][c+3] = val||'';
     });
   });
 
   const subtotalRow = HEADER_ROWS + maxItems + 1;
-  let grandBoxes = 0, grandValue = 0;
+  let grandBoxes = 0, grandLoose = 0, grandValue = 0;
   CP_BRANDS_CONFIG.forEach((br,bi)=>{
     const c = brStarts[bi];
-    const brBoxes = br.items.reduce((s,item)=>s+(stockMap[item]||{boxes:0}).boxes,0);
-    const brVal   = br.items.reduce((s,item)=>{
-      const v=stockMap[item]||{boxes:0,loose:0};
-      const p=priceMap[item]||{};
-      if(!p.qty||!p.price) return s;
-      return s+(v.boxes*p.qty+(v.loose||0))*p.price;
-    },0);
+    const brBoxes = br.items.reduce((s,item)=>s+((stockMap[item]||{}).boxes||0),0);
+    const brLoose = br.items.reduce((s,item)=>s+((stockMap[item]||{}).loose||0),0);
     grandBoxes += brBoxes;
+    grandLoose += brLoose;
+    const brVal = br.items.reduce((s,item)=>s+itemValue(item),0);
     grandValue += brVal;
+    grid[subtotalRow][c+3] = brVal||'';
     grid[subtotalRow][c]   = `${br.label} 小計`;
     grid[subtotalRow][c+1] = brBoxes;
-    grid[subtotalRow][c+4] = brVal||'';
+    grid[subtotalRow][c+2] = brLoose;
   });
 
   const grandRow = subtotalRow + 1;
   grid[grandRow][0] = '全ブランド合計';
   grid[grandRow][1] = grandBoxes;
-  grid[grandRow][4] = grandValue||'';
+  grid[grandRow][2] = grandLoose;
+  grid[grandRow][3] = grandValue||'';
 
   const ws = XLSX.utils.aoa_to_sheet(grid);
 
@@ -2149,7 +2149,6 @@ window.exportDeptXLSX=async function(){
     colWidths.push({wch: Math.max(maxLen, 14)});
     colWidths.push({wch: 7});
     colWidths.push({wch: 7});
-    colWidths.push({wch: 8});
     colWidths.push({wch: 12});
     colWidths.push({wch: 2});
   });
