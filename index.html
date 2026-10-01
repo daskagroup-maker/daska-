@@ -1,9 +1,9 @@
-<!-- DASKA 庫存 v10.7.2.0 2026-10-01 -->
+<!-- DASKA 庫存 v10.7.2.1 2026-10-01 -->
 <!DOCTYPE html>
 <html lang="zh-TW">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, minimum-scale=1.0, viewport-fit=cover, shrink-to-fit=no">
 <title>DASKA 庫存</title>
 
 <!-- ══ PWA Meta ══ -->
@@ -305,11 +305,17 @@ input[type="date"]:focus,input[type="text"]:focus{border-color:#378ADD;box-shado
 #guestApp{display:none;}
 /* ══ スマホ表示最適化 ══ */
 @media(max-width:600px){
+  html{-webkit-text-size-adjust:100%;text-size-adjust:100%;}
+  body{zoom:1.15;}
   body{padding:0;padding-bottom:env(safe-area-inset-bottom);}
   .app{padding:10px;border-radius:0;box-shadow:none;}
   .top-bar{flex-wrap:nowrap;gap:6px;}
   .top-bar h1{flex:1 1 auto;min-width:0;font-size:15px;white-space:nowrap;}
   #syncBadgeText{display:none;}
+  .top-bar h1{overflow:hidden;text-overflow:ellipsis;}
+  .top-bar .btn,.top-bar .logout-btn{white-space:nowrap;flex-shrink:0;}
+  .logout-btn{font-size:0 !important;padding:6px 9px !important;}
+  .logout-btn::before{content:'🔒';font-size:15px;}
   .sync-badge{padding:6px;}
   .toolbar-layout[style*="sticky"] > label{display:none;}
   /* タブ：折り返さず横スクロール */
